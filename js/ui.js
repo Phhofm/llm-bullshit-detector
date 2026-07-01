@@ -282,8 +282,8 @@ function getRatingColor(rating) {
 }
 
 function getVerdictColor(rating) {
-  if (rating === '0% Bullshit') return 'verdict-clean';
-  if (rating === 'Smelly Bullshit') return 'verdict-smelly';
+  if (rating === 'Fresh') return 'verdict-clean';
+  if (rating === 'Smelly') return 'verdict-smelly';
   return 'verdict-bullshit';
 }
 

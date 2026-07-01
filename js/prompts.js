@@ -8,8 +8,7 @@ Rules:
 - Be suspicious of vague numbers like "many", "several", "most" — these are not verifiable.
 - Return ONLY valid JSON. No markdown, no commentary, no preamble.
 
-Expected output schema (for reference — these schemas document the intended structure):
-\`\`\`
+Expected output schema (for reference):
 {
   "claims": [
     {
@@ -17,8 +16,7 @@ Expected output schema (for reference — these schemas document the intended st
       "searchQuery": "specific search keywords to verify this"
     }
   ]
-}
-\`\`\``;
+}`;
 
 export const STAGE1_SCHEMA = {
   type: 'object',
@@ -38,33 +36,27 @@ export const STAGE1_SCHEMA = {
   required: ['claims']
 };
 
-export const STAGE3_PROMPT = `You are a ruthless, skeptical fact-checker. Your sole purpose is to compare claims against live web search results and deliver an honest, occasionally funny verdict. You are the final line of defense against confident-sounding nonsense.
+export const STAGE3_PROMPT = `You are a fact-checker. Compare the claim against the provided search snippets and return a verdict.
 
-Rules:
-1. Compare the claim STRICTLY against the provided search snippets. If the snippets don't address the claim, say so — do not use your own knowledge.
-2. Credible sources: established news sites, official documentation, .gov/.edu domains, Wikipedia (with caution), reputable tech publications, company press releases.
-3. Weak sources: random blog posts, forum threads, Reddit comments, tweets, Medium articles by unknown authors, Quora answers. These can support a claim but never fully verify it.
-4. If multiple credible sources agree with the claim → rating is "0% Bullshit"
-5. If multiple credible sources directly contradict the claim → rating is "100% Bullshit"
-6. If sources are weak, contradictory, or don't address the claim → rating is "Smelly Bullshit"
-7. If no search results were provided at all → rating is "Smelly Bullshit"
-8. Pay attention to subtle distinctions: "Python 3.13 is faster" vs "Python 3.13 is 40% faster". The first is vague, the second is a specific claim that requires specific evidence.
-9. If the claim contains a specific number, percentage, or date, the sources must explicitly confirm that EXACT value. Close doesn't count. "About 40%" is not "40%".
-10. NEVER invent or hallucinate URLs. Only cite URLs that actually appear in the provided search snippets.
-11. If "LIVE PAGE FETCHED DIRECTLY" content is provided, it is the authoritative source. If the AI output claims a page doesn't exist or says something that contradicts the live page content, that is 100% Bullshit regardless of what search snippets say.
-12. Return ONLY valid JSON. No markdown, no commentary, no preamble.
+RATINGS:
+- "Fresh": Multiple credible sources clearly confirm every part of the claim.
+- "Bullshit": Multiple credible sources clearly say the exact opposite. Only use this when sources EXPLICITLY contradict the claim -- not when they just fail to mention it.
+- "Smelly": Sources are unclear, too weak to verify, or don't address the claim. When in doubt, use this.
 
-Expected output schema reference:
+RULES:
+1. Compare ONLY against the provided snippets. Do not use your own knowledge.
+2. If you're not sure, use "Smelly". "Bullshit" requires solid contradiction.
+3. Every verdict MUST have an "explanation" string. Always include it.
+4. Every verdict MUST have a "sources" array. List the URLs you referenced.
+5. NEVER invent URLs. Only use URLs from the provided snippets.
+6. Return ONLY valid JSON. No markdown, no commentary, no preamble.
+
+Expected output schema:
 {
-  "verdicts": [
-    {
-      "claim": "the claim being verified",
-      "rating": "0% Bullshit" | "100% Bullshit" | "Smelly Bullshit",
-      "explanation": "...",
-      "sources": [{ "title": "...", "url": "https://...", "relevant": true|false }]
-    }
-  ],
-  "overallSmellRating": 0-100
+  "claim": "the claim",
+  "rating": "Fresh" or "Bullshit" or "Smelly",
+  "explanation": "what the sources said",
+  "sources": [{ "title": "...", "url": "https://...", "relevant": true }]
 }`;
 
 export const STAGE3_SCHEMA = {
@@ -76,7 +68,7 @@ export const STAGE3_SCHEMA = {
         type: 'object',
         properties: {
           claim: { type: 'string' },
-          rating: { type: 'string', enum: ['0% Bullshit', '100% Bullshit', 'Smelly Bullshit'] },
+          rating: { type: 'string', enum: ['Fresh', 'Bullshit', 'Smelly'] },
           explanation: { type: 'string' },
           sources: {
             type: 'array',

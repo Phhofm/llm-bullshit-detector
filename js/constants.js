@@ -1,4 +1,4 @@
-export const SEARCH_PROXY_URL = 'https://REPLACE_WITH_YOUR_WORKER_URL.workers.dev';
+export const SEARCH_PROXY_URL = 'https://bullshit-detector-search-proxy.philiphofmann.workers.dev';
 
 export const LOADING_MESSAGES = [
   'Downloading a tiny brain. It\'s not much, but it\'s honest work.',

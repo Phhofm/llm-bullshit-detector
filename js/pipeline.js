@@ -31,7 +31,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
     if (item.error || item.snippets.length === 0) {
       verdicts.push({
         claim: item.claim,
-        rating: 'Smelly Bullshit',
+        rating: 'Smelly',
         explanation: item.error
           ? 'Search failed for this claim. The internet refused to weigh in.'
           : CLAIM_NOT_FOUND_EXPLANATION,
@@ -49,7 +49,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
     let userContent = `Claim to verify: "${item.claim}"\n\nLive search results:\n${snippetsText}`;
     if (urlContent) {
       userContent += `\n\n---\nLIVE PAGE FETCHED DIRECTLY:\n${urlContent.slice(0, 3000)}`;
-      userContent += `\n\nIMPORTANT: The AI output being checked may have claimed something about the page at this URL. Compare the claim against the ACTUAL content above. If the page clearly exists and contains information the AI denied, that's 100% Bullshit.`;
+      userContent += `\n\nIMPORTANT: The AI output being checked may have claimed something about the page at this URL. Compare the claim against the ACTUAL content above. If the page clearly exists and contains information the AI denied, that's Bullshit.`;
     }
 
     const messages = [
@@ -65,7 +65,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
     } catch {
       verdicts.push({
         claim: item.claim,
-        rating: 'Smelly Bullshit',
+        rating: 'Smelly',
         explanation: 'Verification failed. The model tripped over its own skepticism.',
         sources: item.snippets.slice(0, 3).map(s => ({
           title: s.title,
@@ -94,12 +94,22 @@ function parseModelJson(response, fallback) {
 }
 
 function parseStage3Response(response, fallbackClaim) {
-  return parseModelJson(response, {
-    claim: fallbackClaim,
-    rating: 'Smelly Bullshit',
-    explanation: 'Could not parse verification result. The model got confused.',
-    sources: []
-  });
+  const parsed = parseModelJson(response, null);
+  if (!parsed) {
+    return {
+      claim: fallbackClaim,
+      rating: 'Smelly',
+      explanation: 'Could not parse verification result. The model got confused.',
+      sources: []
+    };
+  }
+
+  return {
+    claim: parsed.claim || fallbackClaim,
+    rating: parsed.rating || 'Smelly',
+    explanation: parsed.explanation || 'The model rendered a verdict but forgot to explain itself. Typical.',
+    sources: Array.isArray(parsed.sources) ? parsed.sources : []
+  };
 }
 
 function calculateOverallRating(verdicts) {
@@ -107,9 +117,10 @@ function calculateOverallRating(verdicts) {
 
   let total = 0;
   for (const v of verdicts) {
-    if (v.rating === '0% Bullshit') total += 0;
-    else if (v.rating === 'Smelly Bullshit') total += 50;
-    else if (v.rating === '100% Bullshit') total += 100;
+    if (v.rating === 'Fresh') total += 0;
+    else if (v.rating === 'Smelly') total += 50;
+    else if (v.rating === 'Bullshit') total += 100;
+    else total += 50;
   }
 
   return Math.round(total / verdicts.length);
