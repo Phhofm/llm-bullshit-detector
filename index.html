@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-950 text-gray-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Bullshit Detector</title>
+  <meta name="description" content="A refreshingly honest tool to detect AI-generated bullshit. Paste the output you don't trust and we'll check it against the actual, live internet.">
+  <meta name="color-scheme" content="dark">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gray: {
+              850: '#1a1d22',
+              950: '#0a0b0d'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👃</text></svg>">
+</head>
+<body class="min-h-screen flex flex-col">
+  <div class="flex-1 max-w-4xl mx-auto w-full px-4 py-8 sm:py-12">
+    <header class="text-center mb-10">
+      <h1 class="text-4xl sm:text-5xl font-bold tracking-tight mb-3">
+        <span class="text-amber-400">LLM</span> Bullshit Detector
+      </h1>
+      <p class="text-gray-500 text-lg italic max-w-lg mx-auto leading-relaxed">
+        Because sometimes AI outputs smell worse than a forgotten Tupperware in the back of the fridge.
+      </p>
+    </header>
+
+    <main>
+      <div id="inputSection" class="max-w-2xl mx-auto mb-8">
+        <textarea
+          id="inputText"
+          rows="6"
+          placeholder="Paste the AI output you don't trust here..."
+          class="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-200 placeholder-gray-600 resize-y focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-colors text-base"
+        ></textarea>
+        <div class="mt-4 text-center">
+          <button
+            id="detectBtn"
+            class="btn-primary"
+          >
+            Detect Bullshit
+          </button>
+        </div>
+      </div>
+
+      <div id="app" class="min-h-[200px]"></div>
+    </main>
+  </div>
+
+  <footer class="text-center py-6 text-gray-600 text-xs border-t border-gray-800/50">
+    <p>
+      LLM Bullshit Detector &middot; Open source on
+      <a href="https://github.com/phhofm/llm-bullshit-detector" class="text-gray-500 hover:text-amber-400 transition-colors" target="_blank" rel="noopener">GitHub</a>
+      &middot; Everything runs in your browser. No API keys, no servers, no bullshit.
+    </p>
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

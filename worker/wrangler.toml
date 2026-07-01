@@ -1,0 +1,7 @@
+name = "bullshit-detector-search-proxy"
+main = "search-proxy.js"
+compatibility_date = "2025-01-01"
+
+[observability]
+enabled = true
+head_sampling_rate = 1

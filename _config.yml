@@ -1,0 +1,11 @@
+include:
+  - "*.html"
+  - "css/*.css"
+  - "js/*.js"
+  - "worker/*.js"
+  - "worker/*.toml"
+exclude:
+  - "node_modules/"
+  - ".git/"
+  - ".kilo/"
+  - "*.md"
