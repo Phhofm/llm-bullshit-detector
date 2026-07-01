@@ -10,15 +10,13 @@ export async function extractClaims(text, onStatus) {
     { role: 'user', content: `Extract every verifiable factual claim from this text. Return ONLY the JSON:\n\n${text}` }
   ];
 
-  const response = await runInference(messages, {
-    type: 'json_object'
-  });
+  const response = await runInference(messages);
 
   const parsed = parseModelJson(response, { claims: [] });
   return (parsed && parsed.claims) ? parsed.claims : [];
 }
 
-export async function verifyClaims(claimsWithSnippets, onStatus) {
+export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
   const verdicts = [];
   let totalErrors = 0;
 
@@ -48,18 +46,19 @@ export async function verifyClaims(claimsWithSnippets, onStatus) {
       .map((s, j) => `[${j + 1}] ${s.title}\nURL: ${s.url}\n${s.snippet}`)
       .join('\n\n');
 
+    let userContent = `Claim to verify: "${item.claim}"\n\nLive search results:\n${snippetsText}`;
+    if (urlContent) {
+      userContent += `\n\n---\nLIVE PAGE FETCHED DIRECTLY:\n${urlContent.slice(0, 3000)}`;
+      userContent += `\n\nIMPORTANT: The AI output being checked may have claimed something about the page at this URL. Compare the claim against the ACTUAL content above. If the page clearly exists and contains information the AI denied, that's 100% Bullshit.`;
+    }
+
     const messages = [
       { role: 'system', content: STAGE3_PROMPT },
-      {
-        role: 'user',
-        content: `Claim to verify: "${item.claim}"\n\nLive search results:\n${snippetsText}\n\nReturn ONLY the JSON verdict for this claim.`
-      }
+      { role: 'user', content: userContent + '\n\nReturn ONLY the JSON verdict for this claim.' }
     ];
 
     try {
-      const response = await runInference(messages, {
-        type: 'json_object'
-      });
+      const response = await runInference(messages);
 
       const parsed = parseStage3Response(response, item.claim);
       verdicts.push(parsed);

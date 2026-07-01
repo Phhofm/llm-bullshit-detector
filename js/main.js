@@ -1,33 +1,67 @@
-import { isWebGPUSupported, loadModel } from './llm.js';
+import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
 import { measureBandwidth } from './bandwidth.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
-import { performParallelSearches } from './search.js';
+import { performParallelSearches, fetchURL } from './search.js';
 import {
   showLoading,
   hideLoading,
   showStatus,
-  renderWebGPUWarning,
+  showCyclingStatus,
+  setLoadingText,
+  renderGPUStatus,
   renderModelTierSelection,
   renderClaimChecklist,
   renderResults,
   renderError
 } from './ui.js';
-import { MODEL_TIERS } from './constants.js';
+import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './constants.js';
 
 let selectedTier = null;
 let extractedClaims = [];
 let bandwidthBps = null;
+let urlContent = null;
 
 const appContainer = document.getElementById('app');
 const inputTextarea = document.getElementById('inputText');
+const inputUrl = document.getElementById('inputUrl');
 const detectBtn = document.getElementById('detectBtn');
 
+async function prewarmEngine() {
+  const lastTierId = localStorage.getItem('bullshit-tier');
+  if (!lastTierId) return;
+  const tier = MODEL_TIERS.find(t => t.id === lastTierId);
+  if (!tier) return;
+
+  try {
+    await loadModel(tier.id, () => {});
+  } catch {
+    // pre-warming failed silently, will load on demand
+  }
+}
+
 async function init() {
-  if (!isWebGPUSupported()) {
-    renderWebGPUWarning(appContainer);
+  const status = await checkGPUStatus();
+
+  if (status === 'no_webgpu') {
+    renderGPUStatus(appContainer, status);
     detectBtn.disabled = true;
     detectBtn.classList.add('btn-disabled');
     return;
+  }
+
+  if (status === 'firefox_no_flag') {
+    renderGPUStatus(appContainer, status);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
+  if (status === 'firefox_ready') {
+    const warning = document.createElement('div');
+    warning.className = 'max-w-2xl mx-auto mb-6 bg-amber-900/20 border border-amber-800/50 rounded-lg p-4 text-center';
+    warning.innerHTML = `<p class="text-amber-300 text-sm leading-relaxed">${FIREFOX_UNSTABLE_MESSAGE}</p>`;
+    const inputSection = document.getElementById('inputSection');
+    inputSection.parentNode.insertBefore(warning, inputSection);
   }
 
   try {
@@ -35,6 +69,8 @@ async function init() {
   } catch {
     bandwidthBps = null;
   }
+
+  prewarmEngine();
 }
 
 detectBtn.addEventListener('click', async () => {
@@ -43,13 +79,39 @@ detectBtn.addEventListener('click', async () => {
   detectBtn.disabled = true;
   detectBtn.classList.add('btn-disabled');
 
+  const existing = getEngineInfo();
+  if (existing && existing.tierId) {
+    const tier = MODEL_TIERS.find(t => t.id === existing.tierId);
+    if (tier) {
+      selectedTier = tier;
+      await runPipeline(getInputText(), tier);
+      return;
+    }
+  }
+
   showLoading(appContainer);
   renderModelTierSelection(appContainer, MODEL_TIERS, bandwidthBps);
   setupTierSelection();
 });
 
+function resetApp() {
+  hideLoading();
+  selectedTier = null;
+  extractedClaims = [];
+  urlContent = null;
+  inputTextarea.value = '';
+  if (inputUrl) inputUrl.value = '';
+  detectBtn.disabled = false;
+  detectBtn.classList.remove('btn-disabled');
+  appContainer.innerHTML = '';
+}
+
 function getInputText() {
   return inputTextarea.value.trim();
+}
+
+function getInputUrl() {
+  return (inputUrl.value || '').trim();
 }
 
 function setupTierSelection() {
@@ -60,6 +122,7 @@ function setupTierSelection() {
       selectedTier = MODEL_TIERS.find(t => t.id === tierId);
       if (!selectedTier) return;
 
+      localStorage.setItem('bullshit-tier', selectedTier.id);
       await runPipeline(getInputText(), selectedTier);
     });
   });
@@ -70,13 +133,12 @@ async function runPipeline(text, tier) {
     showLoading(appContainer);
 
     const engine = await loadModel(tier.id, (progress) => {
-      const msgEl = document.getElementById('loadingMessage');
-      if (msgEl && progress.text) {
-        msgEl.textContent = progress.text;
+      if (progress.text) {
+        setLoadingText(progress.text);
       }
     });
 
-    showStatus(appContainer, 'Isolating confident-sounding lies...');
+    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
     extractedClaims = await extractClaims(text, (msg) => {
       showStatus(appContainer, msg);
     });
@@ -88,8 +150,24 @@ async function runPipeline(text, tier) {
   } catch (err) {
     hideLoading();
     console.error('Pipeline error:', err);
-    renderError(appContainer, 'Something went wrong', err.message || 'The bullshit remains undetected. For now.');
+    const message = translateError(err.message || '');
+    renderError(appContainer, 'Something went wrong', message);
   }
+}
+
+function translateError(msg) {
+  if (msg.includes('compatible GPU') || msg.includes('GPU')) {
+    const platform = navigator.platform || '';
+    if (platform.includes('Linux')) {
+      return 'WebGPU is available but Chrome is using a compatibility fallback that WebLLM can\'t work with. ' +
+        'Try launching Chrome with --enable-unsafe-webgpu flag, or switch to Edge which handles this better on Linux.';
+    }
+    if (platform.includes('Win')) {
+      return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
+    }
+    return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
+  }
+  return msg || 'The bullshit remains undetected. For now.';
 }
 
 function setupChecklistListeners() {
@@ -123,16 +201,12 @@ function setupChecklistListeners() {
   checkboxes.forEach(cb => cb.addEventListener('change', updateButton));
 
   selectAllBtn.addEventListener('click', () => {
-    checkboxes.forEach(cb => {
-      cb.checked = true;
-    });
+    checkboxes.forEach(cb => { cb.checked = true; });
     updateButton();
   });
 
   deselectAllBtn.addEventListener('click', () => {
-    checkboxes.forEach(cb => {
-      cb.checked = false;
-    });
+    checkboxes.forEach(cb => { cb.checked = false; });
     updateButton();
   });
 
@@ -149,15 +223,31 @@ function setupChecklistListeners() {
 
 async function runVerification(selectedClaims) {
   try {
+    const targetUrl = getInputUrl();
+    urlContent = null;
+
+    if (targetUrl) {
+      showStatus(appContainer, 'Fetching live page content...');
+      try {
+        const result = await fetchURL(targetUrl);
+        urlContent = result.content
+          ? `Title: ${result.title || ''}\nURL: ${result.finalUrl || targetUrl}\nContent:\n${result.content}`
+          : null;
+      } catch (err) {
+        console.warn('URL fetch failed:', err.message);
+        urlContent = null;
+      }
+    }
+
     showStatus(appContainer, 'Checking the actual, live internet...');
 
     const claimsWithSnippets = await performParallelSearches(selectedClaims, (done, total) => {
       showStatus(appContainer, `Searching... ${done}/${total} queries`);
     });
 
-    showStatus(appContainer, 'Sniffing out the hallucinations...');
+    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
 
-    const { verdicts, overallSmellRating } = await verifyClaims(claimsWithSnippets, (msg) => {
+    const { verdicts, overallSmellRating } = await verifyClaims(claimsWithSnippets, urlContent, (msg) => {
       showStatus(appContainer, msg);
     });
 
@@ -170,5 +260,7 @@ async function runVerification(selectedClaims) {
     renderError(appContainer, 'Verification failed', err.message || 'The internet refused to cooperate. Try again.');
   }
 }
+
+window.resetApp = resetApp;
 
 init();

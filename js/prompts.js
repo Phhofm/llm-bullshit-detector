@@ -51,7 +51,8 @@ Rules:
 8. Pay attention to subtle distinctions: "Python 3.13 is faster" vs "Python 3.13 is 40% faster". The first is vague, the second is a specific claim that requires specific evidence.
 9. If the claim contains a specific number, percentage, or date, the sources must explicitly confirm that EXACT value. Close doesn't count. "About 40%" is not "40%".
 10. NEVER invent or hallucinate URLs. Only cite URLs that actually appear in the provided search snippets.
-11. Return ONLY valid JSON. No markdown, no commentary, no preamble.
+11. If "LIVE PAGE FETCHED DIRECTLY" content is provided, it is the authoritative source. If the AI output claims a page doesn't exist or says something that contradicts the live page content, that is 100% Bullshit regardless of what search snippets say.
+12. Return ONLY valid JSON. No markdown, no commentary, no preamble.
 
 Expected output schema reference:
 {

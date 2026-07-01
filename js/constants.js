@@ -1,4 +1,4 @@
-export const SEARCH_PROXY_URL = 'https://bullshit-detector-search-proxy.your-username.workers.dev';
+export const SEARCH_PROXY_URL = 'https://REPLACE_WITH_YOUR_WORKER_URL.workers.dev';
 
 export const LOADING_MESSAGES = [
   'Downloading a tiny brain. It\'s not much, but it\'s honest work.',
@@ -34,6 +34,24 @@ export const NO_WEBGPU_MESSAGE =
   'This isn\'t your fault — your hardware just wasn\'t invited to the AI party. ' +
   'Try Chrome, Edge, or Firefox on a device manufactured in the last 5 years.';
 
+export const FIREFOX_FLAG_MESSAGE =
+  'Firefox hides WebGPU behind a flag, like a bouncer at an exclusive club. ' +
+  'Go to about:config, search for "dom.webgpu.enabled", set it to true, and refresh. ' +
+  'Or just use Chrome — it lets anyone in.';
+
+export const FIREFOX_UNSTABLE_MESSAGE =
+  'You\'re running Firefox with WebGPU enabled. It\'s experimental here and will likely crash during inference. ' +
+  'Seriously, use Chrome or Edge — Firefox\'s WebGPU isn\'t production-ready yet. ' +
+  'We\'ll let you try anyway, but don\'t say we didn\'t warn you.';
+
+export const NO_GPU_ADAPTER_MESSAGE =
+  'WebGPU is available in your browser, but no compatible graphics adapter was found. ' +
+  'This usually means your GPU drivers are missing, outdated, or your GPU predates WebGPU support. ' +
+  'Try updating your graphics drivers, or try a different device.';
+
+export const WEBSOCKET_WEBGPU_MESSAGE =
+  'Run chromium with --enable-unsafe-webgpu to switch to software rendering, or a different device.';
+
 export const NO_CLAIMS_MESSAGE =
   'This text contains zero verifiable claims. It\'s either an opinion piece, poetry, or the most ' +
   'carefully worded corporate statement we\'ve ever seen. Either way, nothing to fact-check here.';
@@ -43,7 +61,12 @@ export const ALL_CLEAN_MESSAGE =
   'We\'re as shocked as you are. Maybe buy a lottery ticket today.';
 
 export const CLAIM_NOT_FOUND_EXPLANATION =
-  'The internet has no opinion on this. Suspicious.';
+  'DuckDuckGo\'s instant answers came up empty for this one. Deploy the search proxy for real web search coverage.';
+
+export const WEBGPU_INFO_TEXT =
+  'This tool runs an AI model in your browser via WebGPU. ' +
+  'Chrome or Edge on desktop recommended. Firefox users: enable dom.webgpu.enabled in about:config. ' +
+  'Safari and mobile browsers not yet supported.';
 
 export const DUCK_EVOLVED_MESSAGE =
   'DuckDuckGo changed their HTML again. The duck has evolved beyond our parser. We\'ll adapt. Eventually.';
@@ -61,7 +84,7 @@ export const MODEL_TIERS = [
     id: 'quick',
     label: 'Quick Sniff',
     modelId: 'Qwen2-0.5B-Instruct-q4f16_1-MLC',
-    sizeGB: 1.0,
+    sizeGB: 0.5,
     tagline: 'For when you\'re mildly suspicious.',
     loadingLine: 'A tiny skeptic is downloading. Give it a moment.'
   },
@@ -69,15 +92,15 @@ export const MODEL_TIERS = [
     id: 'deep',
     label: 'Deep Dive',
     modelId: 'Qwen2-1.5B-Instruct-q4f16_1-MLC',
-    sizeGB: 3.0,
+    sizeGB: 1.5,
     tagline: 'For when your boss sent you AI-generated "research".',
     loadingLine: 'A medium-sized skeptic incoming. Go grab a coffee.'
   },
   {
     id: 'autopsy',
     label: 'Full Autopsy',
-    modelId: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-    sizeGB: 4.5,
+    modelId: 'Phi-3-mini-4k-instruct-q4f16_1-MLC',
+    sizeGB: 2.5,
     tagline: 'For when someone\'s credibility needs to be destroyed.',
     loadingLine: 'Loading a proper bullshit detector. This might take a bit.'
   }

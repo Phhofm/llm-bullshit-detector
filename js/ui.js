@@ -1,15 +1,21 @@
 import {
   LOADING_MESSAGES,
+  SNIFFING_MESSAGES,
   NO_WEBGPU_MESSAGE,
+  FIREFOX_FLAG_MESSAGE,
+  NO_GPU_ADAPTER_MESSAGE,
   NO_CLAIMS_MESSAGE,
   ALL_CLEAN_MESSAGE,
-  SCORE_LABELS
+  SCORE_LABELS,
+  WEBGPU_INFO_TEXT
 } from './constants.js';
 import { formatTime, estimateDownloadTime } from './bandwidth.js';
 
 let loadingMessageInterval = null;
 
 export function showLoading(containerEl) {
+  hideLoading();
+
   containerEl.innerHTML = `
     <div class="loading-container text-center py-16">
       <div class="animate-spin inline-block w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full mb-6"></div>
@@ -21,16 +27,29 @@ export function showLoading(containerEl) {
   const msgEl = document.getElementById('loadingMessage');
 
   const cycle = () => {
-    if (msgEl) {
+    if (msgEl && msgEl.dataset.frozen !== 'true') {
       msgEl.textContent = LOADING_MESSAGES[idx % LOADING_MESSAGES.length];
-      msgEl.classList.add('fade-in');
-      setTimeout(() => msgEl.classList.remove('fade-in'), 400);
+      idx++;
     }
-    idx++;
   };
 
   cycle();
   loadingMessageInterval = setInterval(cycle, 3000);
+}
+
+export function setLoadingText(text) {
+  const msgEl = document.getElementById('loadingMessage');
+  if (msgEl) {
+    msgEl.dataset.frozen = 'true';
+    msgEl.textContent = text;
+  }
+}
+
+export function unfreezeLoadingText() {
+  const msgEl = document.getElementById('loadingMessage');
+  if (msgEl) {
+    msgEl.dataset.frozen = 'false';
+  }
 }
 
 export function hideLoading() {
@@ -41,19 +60,86 @@ export function hideLoading() {
 }
 
 export function showStatus(containerEl, message) {
+  hideCycling();
+  hideLoading();
   containerEl.innerHTML = `
     <div class="text-center py-12">
       <div class="inline-block w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <p class="text-gray-400 text-lg italic">${escapeHtml(message)}</p>
+      <p id="statusMessage" class="text-gray-400 text-lg italic">${escapeHtml(message)}</p>
     </div>
   `;
+}
+
+export function showCyclingStatus(containerEl, messages) {
+  hideLoading();
+  hideCycling();
+
+  containerEl.innerHTML = `
+    <div class="text-center py-12">
+      <div class="inline-block w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p id="statusMessage" class="text-gray-400 text-lg italic"></p>
+    </div>
+  `;
+
+  let idx = 0;
+  const msgEl = document.getElementById('statusMessage');
+
+  const cycle = () => {
+    if (msgEl) {
+      msgEl.textContent = messages[idx % messages.length];
+    }
+    idx++;
+  };
+
+  cycle();
+  loadingMessageInterval = setInterval(cycle, 2500);
+}
+
+function hideCycling() {
+  if (loadingMessageInterval) {
+    clearInterval(loadingMessageInterval);
+    loadingMessageInterval = null;
+  }
+}
+
+export function renderGPUStatus(containerEl, status) {
+  if (status === 'firefox_no_flag') {
+    containerEl.innerHTML = `
+      <div class="max-w-2xl mx-auto bg-amber-900/20 border border-amber-800/50 rounded-lg p-6 text-center">
+        <p class="text-amber-300 text-lg mb-2">Firefox needs a config tweak</p>
+        <p class="text-gray-400 text-sm leading-relaxed">${FIREFOX_FLAG_MESSAGE}</p>
+      </div>
+    `;
+  } else if (status === 'no_adapter') {
+    containerEl.innerHTML = `
+      <div class="max-w-2xl mx-auto bg-red-900/20 border border-red-800/50 rounded-lg p-6 text-center">
+        <p class="text-red-300 text-lg mb-2">No compatible GPU found</p>
+        <p class="text-gray-400 text-sm leading-relaxed">${NO_GPU_ADAPTER_MESSAGE}</p>
+      </div>
+    `;
+  } else {
+    containerEl.innerHTML = `
+      <div class="max-w-2xl mx-auto bg-red-900/20 border border-red-800/50 rounded-lg p-6 text-center">
+        <p class="text-red-300 text-lg mb-2">WebGPU not available</p>
+        <p class="text-gray-400 text-sm leading-relaxed">${NO_WEBGPU_MESSAGE}</p>
+      </div>
+    `;
+  }
 }
 
 export function renderWebGPUWarning(containerEl) {
   containerEl.innerHTML = `
     <div class="max-w-2xl mx-auto bg-red-900/20 border border-red-800/50 rounded-lg p-6 text-center">
-      <p class="text-red-300 text-lg mb-2">No compatible GPU detected</p>
+      <p class="text-red-300 text-lg mb-2">WebGPU not available</p>
       <p class="text-gray-400 text-sm leading-relaxed">${NO_WEBGPU_MESSAGE}</p>
+    </div>
+  `;
+}
+
+export function renderWebGPUInfo(containerEl) {
+  containerEl.innerHTML = `
+    <div class="max-w-2xl mx-auto bg-gray-900 border border-gray-700/50 rounded-lg p-4 text-center mb-8">
+      <p class="text-gray-500 text-xs leading-relaxed">${WEBGPU_INFO_TEXT}</p>
     </div>
   `;
 }
@@ -174,7 +260,7 @@ export function renderResults(containerEl, verdicts, overallSmellRating) {
       </div>
       <div class="verdict-list">${cards}</div>
       <div class="text-center mt-8">
-        <button onclick="location.reload()" class="btn-secondary">
+        <button onclick="window.resetApp()" class="btn-secondary">
           Sniff something else
         </button>
       </div>
@@ -206,7 +292,7 @@ export function renderError(containerEl, heading, message) {
     <div class="max-w-2xl mx-auto text-center py-8">
       <p class="text-red-400 text-lg mb-2">${escapeHtml(heading)}</p>
       <p class="text-gray-400 text-sm">${escapeHtml(message)}</p>
-      <button onclick="location.reload()" class="btn-secondary mt-4">Try again</button>
+      <button onclick="window.resetApp()" class="btn-secondary mt-4">Try again</button>
     </div>
   `;
 }

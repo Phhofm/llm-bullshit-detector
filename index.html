@@ -43,6 +43,12 @@
           placeholder="Paste the AI output you don't trust here..."
           class="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 text-gray-200 placeholder-gray-600 resize-y focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-colors text-base"
         ></textarea>
+        <input
+          id="inputUrl"
+          type="url"
+          placeholder="Optional: paste the URL the AI claims doesn't exist (e.g., a fresh article)"
+          class="w-full mt-3 bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-200 placeholder-gray-600 text-sm focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-colors"
+        >
         <div class="mt-4 text-center">
           <button
             id="detectBtn"
@@ -51,6 +57,10 @@
             Detect Bullshit
           </button>
         </div>
+        <p class="text-center text-gray-600 text-xs mt-3 leading-relaxed">
+          This runs an AI model in your browser via WebGPU.
+          Chrome or Edge on desktop recommended. Firefox: enable dom.webgpu.enabled in about:config.
+        </p>
       </div>
 
       <div id="app" class="min-h-[200px]"></div>

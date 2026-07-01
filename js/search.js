@@ -1,6 +1,124 @@
 import { SEARCH_PROXY_URL, DUCK_EVOLVED_MESSAGE } from './constants.js';
 
+const PROXY_PLACEHOLDER = 'REPLACE_WITH_YOUR_WORKER_URL';
+const hasProxyConfigured = !SEARCH_PROXY_URL.includes(PROXY_PLACEHOLDER);
+
+export async function fetchURL(url, maxChars = 50000) {
+  if (!hasProxyConfigured) {
+    throw new Error('URL fetching requires the search proxy to be deployed. Run: npx wrangler deploy');
+  }
+
+  const resp = await fetch(`${SEARCH_PROXY_URL}/fetch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, maxChars })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+    throw new Error(err.error || `Failed to fetch URL: HTTP ${resp.status}`);
+  }
+
+  return resp.json();
+}
+
 async function performSearch(query) {
+  try {
+    const results = await searchViaJSONP(query);
+    if (results.length > 0) return results;
+  } catch (err) {
+    console.warn('JSONP search failed:', err.message);
+  }
+
+  return await searchViaProxy(query);
+}
+
+function searchViaJSONP(query) {
+  return new Promise((resolve, reject) => {
+    const callbackName = '_ddg' + Date.now() + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let settled = false;
+
+    const cleanup = () => {
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    const finish = (results) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(results);
+    };
+
+    window[callbackName] = (data) => {
+      const results = parseDDGApiResponse(data);
+      finish(results);
+    };
+
+    script.src = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&callback=${callbackName}`;
+    script.onerror = () => finish([]);
+
+    document.head.appendChild(script);
+
+    setTimeout(() => finish([]), 8000);
+  });
+}
+
+function parseDDGApiResponse(data) {
+  const results = [];
+
+  if (data.Abstract && data.AbstractURL) {
+    results.push({
+      title: data.Heading || extractTitleFromResult(data.Abstract),
+      url: data.AbstractURL,
+      snippet: stripTags(data.Abstract)
+    });
+  }
+
+  const topics = data.RelatedTopics || [];
+  for (const topic of topics) {
+    if (!topic.FirstURL || !topic.Text) continue;
+    results.push({
+      title: extractTitleFromResult(topic.Result || ''),
+      url: topic.FirstURL,
+      snippet: stripTags(topic.Text)
+    });
+  }
+
+  const webResults = data.Results || [];
+  for (const r of webResults) {
+    if (!r.FirstURL || !r.Text) continue;
+    results.push({
+      title: extractTitleFromResult(r.Result || ''),
+      url: r.FirstURL,
+      snippet: stripTags(r.Text)
+    });
+  }
+
+  return results;
+}
+
+function extractTitleFromResult(html) {
+  if (!html) return '';
+  const match = html.match(/<a[^>]*>([\s\S]*?)<\/a>/i);
+  if (match) return stripTags(match[1]);
+  return stripTags(html);
+}
+
+function stripTags(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.innerHTML = str;
+  return (div.textContent || '').trim().replace(/\s+/g, ' ');
+}
+
+async function searchViaProxy(query) {
+  const placeholder = 'REPLACE_WITH_YOUR_WORKER_URL';
+  if (SEARCH_PROXY_URL.includes(placeholder)) {
+    throw new Error('Search proxy not configured');
+  }
+
   try {
     const url = `${SEARCH_PROXY_URL}?q=${encodeURIComponent(query)}`;
     const resp = await fetch(url);
@@ -10,10 +128,24 @@ async function performSearch(query) {
     }
 
     const html = await resp.text();
-    return parseSearchResults(html);
+    return parseProxyResults(html);
   } catch (err) {
-    console.warn('Search failed:', err.message);
+    console.warn('Proxy search failed:', err.message);
     throw err;
+  }
+}
+
+function parseProxyResults(html) {
+  try {
+    const results = parseDuckDuckGoLite(html);
+    if (results.length > 0) return results;
+  } catch { /* fall through */ }
+
+  try {
+    return parseDuckDuckGoRegex(html);
+  } catch {
+    console.warn(DUCK_EVOLVED_MESSAGE);
+    return [];
   }
 }
 
@@ -33,22 +165,6 @@ export async function performParallelSearches(claims, onProgress) {
   return results;
 }
 
-function parseSearchResults(html) {
-  try {
-    const results = parseDuckDuckGoLite(html);
-    if (results.length > 0) return results;
-  } catch {
-    // fall through to regex parser
-  }
-
-  try {
-    return parseDuckDuckGoRegex(html);
-  } catch {
-    console.warn(DUCK_EVOLVED_MESSAGE);
-    return [];
-  }
-}
-
 function parseDuckDuckGoLite(html) {
   const results = [];
   const parser = new DOMParser();
@@ -60,9 +176,7 @@ function parseDuckDuckGoLite(html) {
   for (const row of rows) {
     const linkEl = row.querySelector('a.result-link');
     if (linkEl) {
-      if (currentResult) {
-        results.push(currentResult);
-      }
+      if (currentResult) results.push(currentResult);
       currentResult = {
         title: (linkEl.textContent || '').trim(),
         url: extractRealUrl(linkEl.getAttribute('href') || ''),
@@ -77,17 +191,13 @@ function parseDuckDuckGoLite(html) {
     }
   }
 
-  if (currentResult) {
-    results.push(currentResult);
-  }
-
+  if (currentResult) results.push(currentResult);
   return results;
 }
 
 function parseDuckDuckGoRegex(html) {
   const results = [];
   const rows = html.split(/<tr[^>]*>/i);
-
   let currentTitle = '';
   let currentUrl = '';
 
@@ -117,20 +227,9 @@ function parseDuckDuckGoRegex(html) {
 function extractRealUrl(href) {
   const uddgMatch = href.match(/uddg=([^&]*)/);
   if (uddgMatch) {
-    try {
-      return decodeURIComponent(uddgMatch[1]);
-    } catch {
-      return href;
-    }
+    try { return decodeURIComponent(uddgMatch[1]); } catch { return href; }
   }
-
-  if (href.startsWith('http')) {
-    return href;
-  }
-
-  if (href.startsWith('//')) {
-    return 'https:' + href;
-  }
-
+  if (href.startsWith('http')) return href;
+  if (href.startsWith('//')) return 'https:' + href;
   return href;
 }
