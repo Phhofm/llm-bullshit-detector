@@ -56,6 +56,13 @@ async function init() {
     return;
   }
 
+  if (status === 'no_adapter') {
+    renderGPUStatus(appContainer, status);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
   if (status === 'firefox_ready') {
     const warning = document.createElement('div');
     warning.className = 'max-w-2xl mx-auto mb-6 bg-amber-900/20 border border-amber-800/50 rounded-lg p-4 text-center';

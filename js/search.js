@@ -52,16 +52,26 @@ function searchViaJSONP(query) {
     };
 
     window[callbackName] = (data) => {
+      if (!data) {
+        finish([]);
+        return;
+      }
       const results = parseDDGApiResponse(data);
       finish(results);
     };
 
     script.src = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&callback=${callbackName}`;
-    script.onerror = () => finish([]);
+    script.onerror = () => {
+      cleanup();
+      finish([]);
+    };
 
     document.head.appendChild(script);
 
-    setTimeout(() => finish([]), 8000);
+    setTimeout(() => {
+      cleanup();
+      finish([]);
+    }, 8000);
   });
 }
 
@@ -124,10 +134,21 @@ async function searchViaProxy(query) {
     const resp = await fetch(url);
 
     if (!resp.ok) {
-      throw new Error(`Search proxy returned ${resp.status}`);
+      const text = await resp.text().catch(() => '');
+      throw new Error(`Search proxy returned ${resp.status}: ${text.slice(0, 200)}`);
+    }
+
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Search proxy returned an error');
     }
 
     const html = await resp.text();
+    if (!html || html.length < 100) {
+      throw new Error('Search proxy returned empty or too short response');
+    }
+
     return parseProxyResults(html);
   } catch (err) {
     console.warn('Proxy search failed:', err.message);

@@ -105,6 +105,7 @@ function extractText(html, maxChars) {
     .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
     .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
     .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+    .replace(/<\/?(?:div|span|p|br|hr|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|h[1-6]|blockquote|pre|code|a|strong|em|b|i|u|s|small|sub|sup|abbr|acronym|cite|q|dfn|kbd|samp|var|time|mark|ruby|rt|rp|bdi|bdo|wbr|ins|del|details|summary|dialog|figure|figcaption|main|article|section|aside|header|footer|nav|address|fieldset|legend|form|label|input|button|select|textarea|option|optgroup|datalist|output|progress|meter|canvas|svg|math|iframe|embed|object|param|video|audio|source|track|map|area)[^>]*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')

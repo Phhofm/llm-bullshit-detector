@@ -20,7 +20,7 @@ export async function measureBandwidth() {
     const deadline = start + 2000;
 
     while (performance.now() < deadline) {
-      const { done, value } = await reader.readValue();
+      const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
     }

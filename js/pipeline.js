@@ -81,12 +81,28 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
 }
 
 function parseModelJson(response, fallback) {
+  if (!response) return fallback;
+
+  let cleaned = response.trim();
+
+  if (cleaned.startsWith('```')) {
+    const firstNewline = cleaned.indexOf('\n');
+    if (firstNewline !== -1) {
+      cleaned = cleaned.slice(firstNewline + 1);
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.slice(0, -3);
+    }
+    cleaned = cleaned.trim();
+  }
+
+  cleaned = cleaned.replace(/^json\s*/i, '').trim();
+
   try {
-    return JSON.parse(response);
+    return JSON.parse(cleaned);
   } catch {
-    const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     try {
-      return JSON.parse(cleaned);
+      return JSON.parse(cleaned.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
     } catch {
       return fallback;
     }

@@ -1,0 +1,17 @@
+{
+  "name": "llm-bullshit-detector",
+  "version": "1.0.0",
+  "description": "A refreshingly honest tool to detect AI-generated bullshit",
+  "private": true,
+  "scripts": {
+    "deploy:worker": "cd worker && npx wrangler deploy",
+    "dev:worker": "cd worker && npx wrangler dev"
+  },
+  "keywords": [
+    "ai",
+    "fact-checking",
+    "webgpu",
+    "web-llm"
+  ],
+  "license": "MIT"
+}
