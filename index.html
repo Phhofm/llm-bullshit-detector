@@ -58,7 +58,7 @@
           </button>
         </div>
         <p class="text-center text-gray-600 text-xs mt-3 leading-relaxed">
-          This runs an AI model in your browser via WebGPU.
+          Runs an AI model in your browser via WebGPU and WebLLM.
           Chrome or Edge on desktop recommended. Firefox: enable dom.webgpu.enabled in about:config.
         </p>
       </div>
@@ -68,10 +68,18 @@
   </div>
 
   <footer class="text-center py-6 text-gray-600 text-xs border-t border-gray-800/50">
-    <p>
+    <p class="mb-2">
       LLM Bullshit Detector &middot; Open source on
       <a href="https://github.com/phhofm/llm-bullshit-detector" class="text-gray-500 hover:text-amber-400 transition-colors" target="_blank" rel="noopener">GitHub</a>
       &middot; Everything runs in your browser. No API keys, no servers, no bullshit.
+    </p>
+    <p class="text-gray-600">
+      Powered by
+      <a href="https://github.com/mlc-ai/web-llm" class="text-gray-500 hover:text-amber-400 transition-colors inline-flex items-center gap-1" target="_blank" rel="noopener">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="inline-block"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        WebLLM
+      </a>
+      running Qwen2 / Phi-3 entirely on-device via WebGPU.
     </p>
   </footer>
 

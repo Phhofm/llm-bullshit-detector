@@ -1,5 +1,4 @@
 import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
-import { measureBandwidth } from './bandwidth.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
 import { performParallelSearches, fetchURL } from './search.js';
 import {
@@ -9,7 +8,7 @@ import {
   showCyclingStatus,
   setLoadingText,
   renderGPUStatus,
-  renderModelTierSelection,
+  renderModelSelector,
   renderClaimChecklist,
   renderResults,
   renderError
@@ -18,7 +17,6 @@ import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE } from './constants.js';
 
 let selectedTier = null;
 let extractedClaims = [];
-let bandwidthBps = null;
 let urlContent = null;
 
 const appContainer = document.getElementById('app');
@@ -26,12 +24,17 @@ const inputTextarea = document.getElementById('inputText');
 const inputUrl = document.getElementById('inputUrl');
 const detectBtn = document.getElementById('detectBtn');
 
-async function prewarmEngine() {
-  const lastTierId = localStorage.getItem('bullshit-tier');
-  if (!lastTierId) return;
-  const tier = MODEL_TIERS.find(t => t.id === lastTierId);
-  if (!tier) return;
+function getDefaultTier() {
+  const saved = localStorage.getItem('bullshit-tier');
+  if (saved) {
+    const tier = MODEL_TIERS.find(t => t.id === saved);
+    if (tier) return tier;
+  }
+  return MODEL_TIERS.find(t => t.id === 'deep') || MODEL_TIERS[0];
+}
 
+async function prewarmEngine() {
+  const tier = getDefaultTier();
   try {
     await loadModel(tier.id, () => {});
   } catch {
@@ -71,10 +74,90 @@ async function init() {
     inputSection.parentNode.insertBefore(warning, inputSection);
   }
 
-  try {
-    bandwidthBps = await measureBandwidth();
-  } catch {
-    bandwidthBps = null;
+  prewarmEngine();
+}
+
+detectBtn.addEventListener('click', async () => {
+  if (!inputTextarea.value.trim()) return;
+
+  detectBtn.disabled = true;
+  detectBtn.classList.add('btn-disabled');
+
+  const existing = getEngineInfo();
+  if (existing && existing.tierId) {
+    const tier = MODEL_TIERS.find(t => t.id === existing.tierId);
+    if (tier) {
+      selectedTier = tier;
+      await runPipeline(getInputText(), tier);
+      return;
+    }
+  }
+
+  selectedTier = getDefaultTier();
+  await loadAndRun(selectedTier);
+});
+
+async function loadAndRun(tier) {
+  showLoading(appContainer);
+  renderModelSelector(appContainer, MODEL_TIERS, tier);
+  setupModelSelector();
+}
+
+function setupModelSelector() {
+  const select = document.getElementById('modelSelect');
+  if (!select) return;
+
+  select.addEventListener('change', async () => {
+    const tierId = select.value;
+    const tier = MODEL_TIERS.find(t => t.id === tierId);
+    if (!tier) return;
+
+    localStorage.setItem('bullshit-tier', tier.id);
+    selectedTier = tier;
+    await loadAndRun(tier);
+  });
+
+  select.addEventListener('blur', async () => {
+    const tierId = select.value;
+    const tier = MODEL_TIERS.find(t => t.id === tierId);
+    if (!tier) return;
+
+    localStorage.setItem('bullshit-tier', tier.id);
+    selectedTier = tier;
+    await runPipeline(getInputText(), tier);
+  });
+}
+
+async function init() {
+  const status = await checkGPUStatus();
+
+  if (status === 'no_webgpu') {
+    renderGPUStatus(appContainer, status);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
+  if (status === 'firefox_no_flag') {
+    renderGPUStatus(appContainer, status);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
+  if (status === 'no_adapter') {
+    renderGPUStatus(appContainer, status);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
+  if (status === 'firefox_ready') {
+    const warning = document.createElement('div');
+    warning.className = 'max-w-2xl mx-auto mb-6 bg-amber-900/20 border border-amber-800/50 rounded-lg p-4 text-center';
+    warning.innerHTML = `<p class="text-amber-300 text-sm leading-relaxed">${FIREFOX_UNSTABLE_MESSAGE}</p>`;
+    const inputSection = document.getElementById('inputSection');
+    inputSection.parentNode.insertBefore(warning, inputSection);
   }
 
   prewarmEngine();
@@ -96,10 +179,40 @@ detectBtn.addEventListener('click', async () => {
     }
   }
 
-  showLoading(appContainer);
-  renderModelTierSelection(appContainer, MODEL_TIERS, bandwidthBps);
-  setupTierSelection();
+  selectedTier = getDefaultTier();
+  await loadAndRun(selectedTier);
 });
+
+async function loadAndRun(tier) {
+  showLoading(appContainer);
+  renderModelSelector(appContainer, MODEL_TIERS, tier);
+  setupModelSelector();
+}
+
+function setupModelSelector() {
+  const select = document.getElementById('modelSelect');
+  if (!select) return;
+
+  select.addEventListener('change', async () => {
+    const tierId = select.value;
+    const tier = MODEL_TIERS.find(t => t.id === tierId);
+    if (!tier) return;
+
+    localStorage.setItem('bullshit-tier', tier.id);
+    selectedTier = tier;
+    await loadAndRun(tier);
+  });
+
+  select.addEventListener('blur', async () => {
+    const tierId = select.value;
+    const tier = MODEL_TIERS.find(t => t.id === tierId);
+    if (!tier) return;
+
+    localStorage.setItem('bullshit-tier', tier.id);
+    selectedTier = tier;
+    await runPipeline(getInputText(), tier);
+  });
+}
 
 function resetApp() {
   hideLoading();
@@ -119,20 +232,6 @@ function getInputText() {
 
 function getInputUrl() {
   return (inputUrl.value || '').trim();
-}
-
-function setupTierSelection() {
-  const tierButtons = appContainer.querySelectorAll('.tier-card');
-  tierButtons.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const tierId = btn.dataset.tier;
-      selectedTier = MODEL_TIERS.find(t => t.id === tierId);
-      if (!selectedTier) return;
-
-      localStorage.setItem('bullshit-tier', selectedTier.id);
-      await runPipeline(getInputText(), selectedTier);
-    });
-  });
 }
 
 async function runPipeline(text, tier) {

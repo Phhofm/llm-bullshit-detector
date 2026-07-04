@@ -8,7 +8,6 @@ import {
   SCORE_LABELS,
   WEBGPU_INFO_TEXT
 } from './constants.js';
-import { formatTime, estimateDownloadTime } from './bandwidth.js';
 
 let loadingMessageInterval = null;
 
@@ -143,36 +142,24 @@ export function renderWebGPUInfo(containerEl) {
   `;
 }
 
-export function renderModelTierSelection(containerEl, tiers, bandwidthBps) {
-  const cards = tiers.map(tier => {
-    const estSeconds = estimateDownloadTime(tier.sizeGB, bandwidthBps);
-    const timeStr = estSeconds ? `(~${formatTime(estSeconds)} on your connection)` : '';
-    const recommended = estSeconds && estSeconds < 300;
-
-    return `
-      <button
-        class="tier-card ${recommended ? 'tier-recommended' : ''}"
-        data-tier="${tier.id}"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-white font-semibold text-lg">${tier.label}</span>
-          <span class="text-xs bg-gray-700 px-2 py-1 rounded">${tier.sizeGB} GB</span>
-        </div>
-        <p class="text-gray-400 text-sm mb-2">${tier.tagline}</p>
-        <p class="text-gray-500 text-xs">${timeStr}</p>
-        ${recommended ? '<span class="inline-block mt-2 text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded">Recommended</span>' : ''}
-      </button>
-    `;
+export function renderModelSelector(containerEl, tiers, selectedTier) {
+  const options = tiers.map(tier => {
+    const selected = tier.id === selectedTier.id ? ' selected' : '';
+    const desc = tier.id === 'deep'
+      ? 'Recommended — best balance'
+      : 'Most thorough, heavier';
+    return `<option value="${tier.id}"${selected}>${tier.label} (${tier.modelId.split('-')[0]}-${tier.sizeGB}B) — ${desc}</option>`;
   }).join('');
 
   containerEl.innerHTML = `
-    <div class="max-w-2xl mx-auto">
-      <p class="text-center text-gray-400 mb-4 text-sm italic">
-        ${bandwidthBps
-          ? 'Choose your detection depth. Models are cached after first download.'
-          : 'Couldn\'t measure your connection speed. Choose a tier:'}
+    <div class="max-w-2xl mx-auto text-center">
+      <p class="text-gray-400 text-sm mb-4">
+        Choose model (default: <span class="text-amber-400">Deep Dive — Qwen2-1.5B</span>):
       </p>
-      <div class="tier-grid">${cards}</div>
+      <select id="modelSelect" class="bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-gray-200 text-sm focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 w-full max-w-md mx-auto">
+        ${options}
+      </select>
+      <p class="text-gray-600 text-xs mt-3">Models are cached after first download. Press <kbd class="bg-gray-800 px-1.5 py-0.5 rounded text-xs">Enter</kbd> or tap outside to confirm.</p>
     </div>
   `;
 }

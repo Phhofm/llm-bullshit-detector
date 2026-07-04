@@ -91,7 +91,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
       continue;
     }
 
-    const parsed = parseStage3Response(response, item.claim);
+    const parsed = parseStage3Response(response, item);
     verdicts.push(parsed);
   }
 
@@ -128,22 +128,46 @@ function parseModelJson(response, fallback) {
   }
 }
 
-function parseStage3Response(response, fallbackClaim) {
+function parseStage3Response(response, item) {
+  const fallbackClaim = item.claim;
+  const fallbackSources = item.snippets.slice(0, 3).map(s => ({
+    title: s.title,
+    url: s.url,
+    relevant: false
+  }));
+
   const parsed = parseModelJson(response, null);
   if (!parsed) {
     return {
       claim: fallbackClaim,
       rating: 'Smelly',
-      explanation: 'Could not parse verification result. The model got confused.',
-      sources: []
+      explanation: 'Could not parse the verification result. The small model produced malformed output — try a bigger model tier for more reliable answers.',
+      sources: fallbackSources
+    };
+  }
+
+  const rating = ['Fresh', 'Bullshit', 'Smelly'].includes(parsed.rating) ? parsed.rating : 'Smelly';
+  const hasExplanation = typeof parsed.explanation === 'string' && parsed.explanation.trim().length > 0;
+  const sources = Array.isArray(parsed.sources) && parsed.sources.length > 0 ? parsed.sources : fallbackSources;
+
+  if (!hasExplanation) {
+    // The model gave a verdict but no reasoning — that's low-confidence, don't trust "Fresh"/"Bullshit" blindly.
+    const topTitles = item.snippets.slice(0, 2).map(s => s.title).filter(Boolean).join('; ');
+    return {
+      claim: parsed.claim || fallbackClaim,
+      rating: 'Smelly',
+      explanation: topTitles
+        ? `The model gave a verdict but no explanation, so we downgraded it to "Smelly" out of caution. Relevant sources found: ${topTitles}. Check them yourself below.`
+        : 'The model gave a verdict but no explanation, so we downgraded it to "Smelly" out of caution. Try a bigger model tier for more reliable reasoning.',
+      sources
     };
   }
 
   return {
     claim: parsed.claim || fallbackClaim,
-    rating: parsed.rating || 'Smelly',
-    explanation: parsed.explanation || 'The model rendered a verdict but forgot to explain itself. Typical.',
-    sources: Array.isArray(parsed.sources) ? parsed.sources : []
+    rating,
+    explanation: parsed.explanation.trim(),
+    sources
   };
 }
 

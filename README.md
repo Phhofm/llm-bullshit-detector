@@ -26,15 +26,11 @@ Go to the GitHub Pages URL for this repository. No downloads, no sign-ups.
 
 Paste any AI-generated output into the text box. You can optionally provide a URL if the AI made a claim about a specific web page.
 
-### Step 3: Choose detection depth
+### Step 3: Choose model (optional)
 
-The first time you use it, you'll be asked to pick a model tier:
+By default, the tool uses **Qwen2-1.5B** (Deep Dive) — the best balance of speed and reliable reasoning. It runs entirely in your browser via [WebLLM](https://github.com/mlc-ai/web-llm) and WebGPU.
 
-| Tier | Model Size | When to use |
-|------|-----------|-------------|
-| **Quick Sniff** | 0.5 GB | Fast checks, short texts, you're only mildly suspicious |
-| **Deep Dive** | 1.5 GB | Longer texts, serious fact-checking |
-| **Full Autopsy** | 2.5 GB | Dense research outputs, maximum thoroughness |
+If you want more thoroughness, use the small dropdown to switch to **Phi-3-mini** (Full Autopsy, 2.5 GB). It's slower and uses more memory, but produces more careful verdicts.
 
 Models are cached after first download, so subsequent visits load instantly.
 
@@ -60,7 +56,7 @@ At the top you'll see an overall "Bullshit %" score.
 
 ## Tips
 
-- **Be patient on first visit**: The model downloads once (0.5–2.5 GB depending on tier) and is cached forever after that.
+- **Be patient on first visit**: The default model downloads once (~1.5 GB) and is cached forever after that.
 - **Desktop recommended**: Chrome or Edge on a desktop/laptop gives the best experience. Mobile works but is slower.
 - **Internet required**: Search needs an active connection. The AI model itself runs entirely in your browser — no data leaves your device except search queries.
 
@@ -68,7 +64,7 @@ At the top you'll see an overall "Bullshit %" score.
 
 ### Why does it take so long?
 
-First-time use requires downloading a language model (0.5–2.5 GB). After that, everything runs locally in your browser. Claim extraction takes a few seconds per text, and verification depends on how many claims you select and your internet speed.
+First-time use requires downloading the default language model (~1.5 GB). After that, everything runs locally in your browser. Claim extraction takes a few seconds per text, and verification depends on how many claims you select and your internet speed.
 
 ### Why does it say "Bullshit" for something that's actually true?
 
@@ -84,7 +80,7 @@ Use **Chrome** (version 113+) or **Edge** (version 113+) on a desktop or laptop.
 
 ### Can I use this on mobile?
 
-Yes, but it's slower and may run out of memory on very large texts. Stick to "Quick Sniff" or "Deep Dive" on mobile.
+Yes, but it's slower and may run out of memory on very large texts. The default 1.5B model should work on most modern phones with 4+ GB RAM (e.g. Galaxy S9 and newer).
 
 ### The search isn't returning results. Is it broken?
 
@@ -94,6 +90,10 @@ Make sure the search proxy is deployed (for site owners). If you're just a visit
 
 The overall score is a simple average of individual claim ratings. If you selected mostly unverified claims, the score skews high. Try selecting fewer, more specific claims for a fairer score.
 
+### Why does the app downgrade "Fresh" to "Smelly" sometimes?
+
+Some very small models produce verdicts without writing an explanation. The app treats that as low-confidence and downgrades the rating. Using the default Qwen2-1.5B model (or Phi-3-mini for Full Autopsy) avoids this.
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -101,14 +101,14 @@ The overall score is a simple average of individual claim ratings. If you select
 | "WebGPU not available" | Switch to Chrome or Edge on a modern desktop/laptop |
 | "No compatible GPU found" | Update your graphics drivers or try a different device |
 | Model download stalls | Check your internet connection, refresh and try again |
-| Verification fails / "model tripped over its own skepticism" | The model timed out or crashed. Try a smaller model tier ("Quick Sniff") or fewer claims |
+| Verification fails / timeout | The model timed out. Try switching to a lighter model via the dropdown, or select fewer claims |
 | Searches return nothing | The DuckDuckGo API or proxy may be rate-limiting. Wait a minute and try again |
 | Page looks broken | Make sure JavaScript is enabled and you're on a supported browser |
 
 ## Tech stack
 
 - **Frontend**: Vanilla HTML/CSS/JS, Tailwind CSS
-- **AI**: [WebLLM](https://github.com/MLC-AI/web-llm) — Qwen2 and Phi models running in-browser via WebGPU
+- **AI**: [WebLLM](https://github.com/MLC-AI/web-llm) — Qwen2-1.5B (default) and Phi-3-mini, running in-browser via WebGPU
 - **Search**: DuckDuckGo via Cloudflare Worker proxy
 - **Hosting**: GitHub Pages ($0)
 

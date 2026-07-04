@@ -81,19 +81,11 @@ export const SCORE_LABELS = [
 
 export const MODEL_TIERS = [
   {
-    id: 'quick',
-    label: 'Quick Sniff',
-    modelId: 'Qwen2-0.5B-Instruct-q4f16_1-MLC',
-    sizeGB: 0.5,
-    tagline: 'For when you\'re mildly suspicious.',
-    loadingLine: 'A tiny skeptic is downloading. Give it a moment.'
-  },
-  {
     id: 'deep',
     label: 'Deep Dive',
     modelId: 'Qwen2-1.5B-Instruct-q4f16_1-MLC',
     sizeGB: 1.5,
-    tagline: 'For when your boss sent you AI-generated "research".',
+    tagline: 'Best balance of speed and accuracy. Recommended for most people.',
     loadingLine: 'A medium-sized skeptic incoming. Go grab a coffee.'
   },
   {
@@ -101,7 +93,7 @@ export const MODEL_TIERS = [
     label: 'Full Autopsy',
     modelId: 'Phi-3-mini-4k-instruct-q4f16_1-MLC',
     sizeGB: 2.5,
-    tagline: 'For when someone\'s credibility needs to be destroyed.',
+    tagline: 'Most thorough and reliable reasoning. Slower and heavier on memory.',
     loadingLine: 'Loading a proper bullshit detector. This might take a bit.'
   }
 ];
