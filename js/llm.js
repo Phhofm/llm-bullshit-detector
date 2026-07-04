@@ -68,7 +68,7 @@ export async function loadModel(tierId, onProgress) {
   return engine;
 }
 
-export async function runInference(messages) {
+export async function runInference(messages, timeoutMs = 90000) {
   if (!engine) throw new Error('Model not loaded');
 
   const request = {
@@ -78,7 +78,6 @@ export async function runInference(messages) {
     max_tokens: 2048
   };
 
-  const timeoutMs = 60000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -86,7 +85,7 @@ export async function runInference(messages) {
     const reply = await Promise.race([
       engine.chat.completions.create(request),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Inference timed out after ' + timeoutMs / 1000 + 's')), timeoutMs)
+        setTimeout(() => reject(new Error(`Inference timed out after ${timeoutMs / 1000}s`)), timeoutMs)
       )
     ]);
     clearTimeout(timeoutId);

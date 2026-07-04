@@ -14,7 +14,7 @@ import {
   renderResults,
   renderError
 } from './ui.js';
-import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './constants.js';
+import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE } from './constants.js';
 
 let selectedTier = null;
 let extractedClaims = [];
@@ -145,7 +145,7 @@ async function runPipeline(text, tier) {
       }
     });
 
-    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
+    showStatus(appContainer, 'Analyzing text and extracting claims...');
     extractedClaims = await extractClaims(text, (msg) => {
       showStatus(appContainer, msg);
     });
@@ -252,7 +252,7 @@ async function runVerification(selectedClaims) {
       showStatus(appContainer, `Searching... ${done}/${total} queries`);
     });
 
-    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
+    showStatus(appContainer, 'Checking claims against the live internet...');
 
     const { verdicts, overallSmellRating } = await verifyClaims(claimsWithSnippets, urlContent, (msg) => {
       showStatus(appContainer, msg);
