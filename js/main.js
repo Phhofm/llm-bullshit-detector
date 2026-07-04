@@ -1,4 +1,4 @@
-import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
+import { checkGPUStatus, loadModel, getEngineInfo, isModelLoading, waitForModel } from './llm.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
 import { performParallelSearches, fetchURL } from './search.js';
 import {
@@ -8,7 +8,7 @@ import {
   showCyclingStatus,
   setLoadingText,
   renderGPUStatus,
-  renderModelSelector,
+  renderModelLoader,
   renderClaimChecklist,
   renderResults,
   renderError
@@ -94,37 +94,27 @@ detectBtn.addEventListener('click', async () => {
   }
 
   selectedTier = getDefaultTier();
-  await loadAndRun(selectedTier);
+  await loadDefaultAndRun();
 });
 
-async function loadAndRun(tier) {
+async function loadDefaultAndRun() {
+  const tier = getDefaultTier();
+  selectedTier = tier;
+
   showLoading(appContainer);
-  renderModelSelector(appContainer, MODEL_TIERS, tier);
-  setupModelSelector();
-}
-
-function setupModelSelector() {
-  const select = document.getElementById('modelSelect');
-  if (!select) return;
-
-  select.addEventListener('change', async () => {
-    const tierId = select.value;
-    const tier = MODEL_TIERS.find(t => t.id === tierId);
-    if (!tier) return;
-
-    localStorage.setItem('bullshit-tier', tier.id);
-    selectedTier = tier;
-    await loadAndRun(tier);
-  });
-
-  select.addEventListener('blur', async () => {
-    const tierId = select.value;
-    const tier = MODEL_TIERS.find(t => t.id === tierId);
-    if (!tier) return;
-
-    localStorage.setItem('bullshit-tier', tier.id);
-    selectedTier = tier;
-    await runPipeline(getInputText(), tier);
+  renderModelLoader(appContainer, MODEL_TIERS, tier, (newTier) => {
+    selectedTier = newTier;
+    localStorage.setItem('bullshit-tier', newTier.id);
+    loadModel(newTier.id, (progress) => {
+      if (progress.text) setLoadingText(progress.text);
+    }).then(() => {
+      runPipeline(getInputText(), newTier);
+    }).catch(() => {
+      hideLoading();
+      renderError(appContainer, 'Model loading failed', 'Could not load the model. Try selecting a different one or refreshing.');
+      detectBtn.disabled = false;
+      detectBtn.classList.remove('btn-disabled');
+    });
   });
 }
 
@@ -179,38 +169,26 @@ detectBtn.addEventListener('click', async () => {
     }
   }
 
-  selectedTier = getDefaultTier();
-  await loadAndRun(selectedTier);
+  await loadDefaultAndRun();
 });
 
-async function loadAndRun(tier) {
+async function loadDefaultAndRun() {
+  const tier = getDefaultTier();
+  selectedTier = tier;
+
   showLoading(appContainer);
-  renderModelSelector(appContainer, MODEL_TIERS, tier);
-  setupModelSelector();
-}
-
-function setupModelSelector() {
-  const select = document.getElementById('modelSelect');
-  if (!select) return;
-
-  select.addEventListener('change', async () => {
-    const tierId = select.value;
-    const tier = MODEL_TIERS.find(t => t.id === tierId);
-    if (!tier) return;
-
-    localStorage.setItem('bullshit-tier', tier.id);
+  renderModelLoader(appContainer, MODEL_TIERS, tier, () => {
     selectedTier = tier;
-    await loadAndRun(tier);
-  });
-
-  select.addEventListener('blur', async () => {
-    const tierId = select.value;
-    const tier = MODEL_TIERS.find(t => t.id === tierId);
-    if (!tier) return;
-
-    localStorage.setItem('bullshit-tier', tier.id);
-    selectedTier = tier;
-    await runPipeline(getInputText(), tier);
+    loadModel(tier.id, (progress) => {
+      if (progress.text) setLoadingText(progress.text);
+    }).then(() => {
+      runPipeline(getInputText(), tier);
+    }).catch(() => {
+      hideLoading();
+      renderError(appContainer, 'Model loading failed', 'Could not load the model. Try selecting a different one or refreshing.');
+      detectBtn.disabled = false;
+      detectBtn.classList.remove('btn-disabled');
+    });
   });
 }
 

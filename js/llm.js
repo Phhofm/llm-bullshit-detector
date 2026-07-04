@@ -3,6 +3,20 @@ import { MODEL_TIERS } from './constants.js';
 let engine = null;
 let currentModelId = null;
 let loadProgressCallback = null;
+let modelLoadingPromise = null;
+
+export function isModelLoading() {
+  return modelLoadingPromise !== null;
+}
+
+export async function waitForModel() {
+  if (!modelLoadingPromise) return null;
+  try {
+    return await modelLoadingPromise;
+  } catch {
+    return null;
+  }
+}
 
 export async function checkGPUStatus() {
   if (typeof navigator === 'undefined' || !navigator.gpu) {
@@ -50,22 +64,33 @@ export async function loadModel(tierId, onProgress) {
   if (engine && currentModelId !== tier.modelId) {
     await engine.unload();
     engine = null;
+    modelLoadingPromise = null;
   }
 
   loadProgressCallback = onProgress;
 
-  const { CreateMLCEngine } = await import('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm');
+  modelLoadingPromise = (async () => {
+    const { CreateMLCEngine } = await import('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/+esm');
 
-  engine = await CreateMLCEngine(tier.modelId, {
-    initProgressCallback: (progress) => {
-      if (loadProgressCallback) {
-        loadProgressCallback(progress);
+    engine = await CreateMLCEngine(tier.modelId, {
+      initProgressCallback: (progress) => {
+        if (loadProgressCallback) {
+          loadProgressCallback(progress);
+        }
       }
-    }
-  });
+    });
 
-  currentModelId = tier.modelId;
-  return engine;
+    currentModelId = tier.modelId;
+    modelLoadingPromise = null;
+    return engine;
+  })();
+
+  try {
+    return await modelLoadingPromise;
+  } catch (err) {
+    modelLoadingPromise = null;
+    throw err;
+  }
 }
 
 export async function runInference(messages, timeoutMs = 90000) {

@@ -142,7 +142,7 @@ export function renderWebGPUInfo(containerEl) {
   `;
 }
 
-export function renderModelSelector(containerEl, tiers, selectedTier) {
+export function renderModelLoader(containerEl, tiers, selectedTier, onSwitchModel) {
   const options = tiers.map(tier => {
     const selected = tier.id === selectedTier.id ? ' selected' : '';
     const desc = tier.id === 'deep'
@@ -153,15 +153,48 @@ export function renderModelSelector(containerEl, tiers, selectedTier) {
 
   containerEl.innerHTML = `
     <div class="max-w-2xl mx-auto text-center">
-      <p class="text-gray-400 text-sm mb-4">
-        Choose model (default: <span class="text-amber-400">Deep Dive — Qwen2-1.5B</span>):
-      </p>
-      <select id="modelSelect" class="bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-gray-200 text-sm focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 w-full max-w-md mx-auto">
-        ${options}
-      </select>
-      <p class="text-gray-600 text-xs mt-3">Models are cached after first download. Press <kbd class="bg-gray-800 px-1.5 py-0.5 rounded text-xs">Enter</kbd> or tap outside to confirm.</p>
+      <div class="loading-container text-center py-8">
+        <div class="animate-spin inline-block w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full mb-6"></div>
+        <p id="loadingMessage" class="text-gray-400 text-lg italic min-h-[2rem]">Loading model...</p>
+      </div>
+      <p class="text-gray-500 text-sm mt-4">Model loads in the background. You can switch while it downloads.</p>
+      <button id="switchModelBtn" class="text-xs text-amber-400 hover:text-amber-300 transition-colors mt-2 underline">
+        Switch model
+      </button>
+      <div id="modelSelectContainer" class="mt-4 hidden">
+        <select id="modelSelect" class="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-200 text-sm focus:outline-none focus:border-amber-500/50 w-full max-w-md mx-auto">
+          ${options}
+        </select>
+        <p class="text-gray-600 text-xs mt-2">Press <kbd class="bg-gray-800 px-1.5 py-0.5 rounded text-xs">Enter</kbd> or tap outside to confirm.</p>
+      </div>
     </div>
   `;
+
+  const switchBtn = document.getElementById('switchModelBtn');
+  const selectContainer = document.getElementById('modelSelectContainer');
+  const select = document.getElementById('modelSelect');
+
+  if (switchBtn && selectContainer) {
+    switchBtn.addEventListener('click', () => {
+      selectContainer.classList.remove('hidden');
+      switchBtn.classList.add('hidden');
+      if (select) select.focus();
+    });
+  }
+
+  if (select && onSwitchModel) {
+    select.addEventListener('change', () => {
+      const tierId = select.value;
+      const tier = tiers.find(t => t.id === tierId);
+      if (tier) onSwitchModel(tier);
+    });
+
+    select.addEventListener('blur', () => {
+      selectContainer.classList.add('hidden');
+      const switchBtnEl = document.getElementById('switchModelBtn');
+      if (switchBtnEl) switchBtnEl.classList.remove('hidden');
+    });
+  }
 }
 
 export function renderClaimChecklist(containerEl, claims) {
