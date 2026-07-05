@@ -1,6 +1,5 @@
 import {
   LOADING_MESSAGES,
-  SNIFFING_MESSAGES,
   NO_WEBGPU_MESSAGE,
   FIREFOX_FLAG_MESSAGE,
   NO_GPU_ADAPTER_MESSAGE,
@@ -9,7 +8,6 @@ import {
   SCORE_LABELS,
   WEBGPU_INFO_TEXT
 } from './constants.js';
-import { formatTime, estimateDownloadTime } from './bandwidth.js';
 
 let loadingMessageInterval = null;
 
@@ -144,38 +142,59 @@ export function renderWebGPUInfo(containerEl) {
   `;
 }
 
-export function renderModelTierSelection(containerEl, tiers, bandwidthBps) {
-  const cards = tiers.map(tier => {
-    const estSeconds = estimateDownloadTime(tier.sizeGB, bandwidthBps);
-    const timeStr = estSeconds ? `(~${formatTime(estSeconds)} on your connection)` : '';
-    const recommended = estSeconds && estSeconds < 300;
-
-    return `
-      <button
-        class="tier-card ${recommended ? 'tier-recommended' : ''}"
-        data-tier="${tier.id}"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-white font-semibold text-lg">${tier.label}</span>
-          <span class="text-xs bg-gray-700 px-2 py-1 rounded">${tier.sizeGB} GB</span>
-        </div>
-        <p class="text-gray-400 text-sm mb-2">${tier.tagline}</p>
-        <p class="text-gray-500 text-xs">${timeStr}</p>
-        ${recommended ? '<span class="inline-block mt-2 text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded">Recommended</span>' : ''}
-      </button>
-    `;
+export function renderModelLoader(containerEl, tiers, selectedTier, onSwitchModel) {
+  const options = tiers.map(tier => {
+    const selected = tier.id === selectedTier.id ? ' selected' : '';
+    const desc = tier.id === 'deep'
+      ? 'Recommended — best balance'
+      : 'Most thorough, heavier';
+    return `<option value="${tier.id}"${selected}>${tier.label} (${tier.modelId.split('-')[0]}-${tier.sizeGB}B) — ${desc}</option>`;
   }).join('');
 
   containerEl.innerHTML = `
-    <div class="max-w-2xl mx-auto">
-      <p class="text-center text-gray-400 mb-4 text-sm italic">
-        ${bandwidthBps
-          ? 'Choose your detection depth. Models are cached after first download.'
-          : 'Couldn\'t measure your connection speed. Choose a tier:'}
-      </p>
-      <div class="tier-grid">${cards}</div>
+    <div class="max-w-2xl mx-auto text-center">
+      <div class="loading-container text-center py-8">
+        <div class="animate-spin inline-block w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full mb-6"></div>
+        <p id="loadingMessage" class="text-gray-400 text-lg italic min-h-[2rem]">Loading model...</p>
+      </div>
+      <p class="text-gray-500 text-sm mt-4">Model loads in the background. You can switch while it downloads.</p>
+      <button id="switchModelBtn" class="text-xs text-amber-400 hover:text-amber-300 transition-colors mt-2 underline">
+        Switch model
+      </button>
+      <div id="modelSelectContainer" class="mt-4 hidden">
+        <select id="modelSelect" class="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-gray-200 text-sm focus:outline-none focus:border-amber-500/50 w-full max-w-md mx-auto">
+          ${options}
+        </select>
+        <p class="text-gray-600 text-xs mt-2">Press <kbd class="bg-gray-800 px-1.5 py-0.5 rounded text-xs">Enter</kbd> or tap outside to confirm.</p>
+      </div>
     </div>
   `;
+
+  const switchBtn = document.getElementById('switchModelBtn');
+  const selectContainer = document.getElementById('modelSelectContainer');
+  const select = document.getElementById('modelSelect');
+
+  if (switchBtn && selectContainer) {
+    switchBtn.addEventListener('click', () => {
+      selectContainer.classList.remove('hidden');
+      switchBtn.classList.add('hidden');
+      if (select) select.focus();
+    });
+  }
+
+  if (select && onSwitchModel) {
+    select.addEventListener('change', () => {
+      const tierId = select.value;
+      const tier = tiers.find(t => t.id === tierId);
+      if (tier) onSwitchModel(tier);
+    });
+
+    select.addEventListener('blur', () => {
+      selectContainer.classList.add('hidden');
+      const switchBtnEl = document.getElementById('switchModelBtn');
+      if (switchBtnEl) switchBtnEl.classList.remove('hidden');
+    });
+  }
 }
 
 export function renderClaimChecklist(containerEl, claims) {
