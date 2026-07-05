@@ -93,6 +93,19 @@ detectBtn.addEventListener('click', async () => {
     }
   }
 
+  if (isModelLoading()) {
+    const engine = await waitForModel();
+    const info = getEngineInfo();
+    if (engine && info && info.tierId) {
+      const tier = MODEL_TIERS.find(t => t.id === info.tierId);
+      if (tier) {
+        selectedTier = tier;
+        await runPipeline(getInputText(), tier);
+        return;
+      }
+    }
+  }
+
   selectedTier = getDefaultTier();
   await loadDefaultAndRun();
 });
@@ -109,80 +122,6 @@ async function loadDefaultAndRun() {
       if (progress.text) setLoadingText(progress.text);
     }).then(() => {
       runPipeline(getInputText(), newTier);
-    }).catch(() => {
-      hideLoading();
-      renderError(appContainer, 'Model loading failed', 'Could not load the model. Try selecting a different one or refreshing.');
-      detectBtn.disabled = false;
-      detectBtn.classList.remove('btn-disabled');
-    });
-  });
-}
-
-async function init() {
-  const status = await checkGPUStatus();
-
-  if (status === 'no_webgpu') {
-    renderGPUStatus(appContainer, status);
-    detectBtn.disabled = true;
-    detectBtn.classList.add('btn-disabled');
-    return;
-  }
-
-  if (status === 'firefox_no_flag') {
-    renderGPUStatus(appContainer, status);
-    detectBtn.disabled = true;
-    detectBtn.classList.add('btn-disabled');
-    return;
-  }
-
-  if (status === 'no_adapter') {
-    renderGPUStatus(appContainer, status);
-    detectBtn.disabled = true;
-    detectBtn.classList.add('btn-disabled');
-    return;
-  }
-
-  if (status === 'firefox_ready') {
-    const warning = document.createElement('div');
-    warning.className = 'max-w-2xl mx-auto mb-6 bg-amber-900/20 border border-amber-800/50 rounded-lg p-4 text-center';
-    warning.innerHTML = `<p class="text-amber-300 text-sm leading-relaxed">${FIREFOX_UNSTABLE_MESSAGE}</p>`;
-    const inputSection = document.getElementById('inputSection');
-    inputSection.parentNode.insertBefore(warning, inputSection);
-  }
-
-  prewarmEngine();
-}
-
-detectBtn.addEventListener('click', async () => {
-  if (!inputTextarea.value.trim()) return;
-
-  detectBtn.disabled = true;
-  detectBtn.classList.add('btn-disabled');
-
-  const existing = getEngineInfo();
-  if (existing && existing.tierId) {
-    const tier = MODEL_TIERS.find(t => t.id === existing.tierId);
-    if (tier) {
-      selectedTier = tier;
-      await runPipeline(getInputText(), tier);
-      return;
-    }
-  }
-
-  await loadDefaultAndRun();
-});
-
-async function loadDefaultAndRun() {
-  const tier = getDefaultTier();
-  selectedTier = tier;
-
-  showLoading(appContainer);
-  renderModelLoader(appContainer, MODEL_TIERS, tier, () => {
-    selectedTier = tier;
-    loadModel(tier.id, (progress) => {
-      if (progress.text) setLoadingText(progress.text);
-    }).then(() => {
-      runPipeline(getInputText(), tier);
     }).catch(() => {
       hideLoading();
       renderError(appContainer, 'Model loading failed', 'Could not load the model. Try selecting a different one or refreshing.');
