@@ -1,5 +1,4 @@
 import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
-import { measureBandwidth } from './bandwidth.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
 import { performParallelSearches, fetchURL } from './search.js';
 import {
@@ -9,7 +8,7 @@ import {
   showCyclingStatus,
   setLoadingText,
   renderGPUStatus,
-  renderModelTierSelection,
+  renderModelLoader,
   renderClaimChecklist,
   renderResults,
   renderError
@@ -18,25 +17,21 @@ import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './cons
 
 let selectedTier = null;
 let extractedClaims = [];
-let bandwidthBps = null;
 let urlContent = null;
+let modelLoadVersion = 0;
 
 const appContainer = document.getElementById('app');
 const inputTextarea = document.getElementById('inputText');
 const inputUrl = document.getElementById('inputUrl');
 const detectBtn = document.getElementById('detectBtn');
 
-async function prewarmEngine() {
-  const lastTierId = localStorage.getItem('bullshit-tier');
-  if (!lastTierId) return;
-  const tier = MODEL_TIERS.find(t => t.id === lastTierId);
-  if (!tier) return;
-
-  try {
-    await loadModel(tier.id, () => {});
-  } catch {
-    // pre-warming failed silently, will load on demand
+function getDefaultTier() {
+  const saved = localStorage.getItem('bullshit-tier');
+  if (saved) {
+    const tier = MODEL_TIERS.find(t => t.id === saved);
+    if (tier) return tier;
   }
+  return MODEL_TIERS.find(t => t.id === 'deep') || MODEL_TIERS[0];
 }
 
 async function init() {
@@ -70,14 +65,6 @@ async function init() {
     const inputSection = document.getElementById('inputSection');
     inputSection.parentNode.insertBefore(warning, inputSection);
   }
-
-  try {
-    bandwidthBps = await measureBandwidth();
-  } catch {
-    bandwidthBps = null;
-  }
-
-  prewarmEngine();
 }
 
 detectBtn.addEventListener('click', async () => {
@@ -96,10 +83,60 @@ detectBtn.addEventListener('click', async () => {
     }
   }
 
-  showLoading(appContainer);
-  renderModelTierSelection(appContainer, MODEL_TIERS, bandwidthBps);
-  setupTierSelection();
+  await loadAndRun();
 });
+
+async function loadAndRun() {
+  const tier = getDefaultTier();
+  selectedTier = tier;
+
+  showLoading(appContainer);
+  renderModelLoader(appContainer, MODEL_TIERS, tier, async (newTier) => {
+    selectedTier = newTier;
+    localStorage.setItem('bullshit-tier', newTier.id);
+    await runWithModel(newTier);
+  });
+
+  await runWithModel(tier);
+}
+
+async function runWithModel(tier) {
+  const currentVersion = ++modelLoadVersion;
+
+  try {
+    const engine = await loadModel(tier.id, (progress) => {
+      if (progress.text) {
+        setLoadingText(progress.text);
+      }
+    });
+
+    if (modelLoadVersion !== currentVersion) return;
+
+    if (!engine) {
+      throw new Error('Model failed to load');
+    }
+
+    showStatus(appContainer, 'Analyzing text and extracting claims...');
+    extractedClaims = await extractClaims(getInputText(), (msg) => {
+      showStatus(appContainer, msg);
+    });
+
+    if (modelLoadVersion !== currentVersion) return;
+
+    hideLoading();
+    renderClaimChecklist(appContainer, extractedClaims);
+    setupChecklistListeners();
+
+  } catch (err) {
+    if (modelLoadVersion !== currentVersion) return;
+    hideLoading();
+    console.error('Pipeline error:', err);
+    const message = translateError(err.message || '');
+    renderError(appContainer, 'Something went wrong', message);
+    detectBtn.disabled = false;
+    detectBtn.classList.remove('btn-disabled');
+  }
+}
 
 function resetApp() {
   hideLoading();
@@ -119,47 +156,6 @@ function getInputText() {
 
 function getInputUrl() {
   return (inputUrl.value || '').trim();
-}
-
-function setupTierSelection() {
-  const tierButtons = appContainer.querySelectorAll('.tier-card');
-  tierButtons.forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const tierId = btn.dataset.tier;
-      selectedTier = MODEL_TIERS.find(t => t.id === tierId);
-      if (!selectedTier) return;
-
-      localStorage.setItem('bullshit-tier', selectedTier.id);
-      await runPipeline(getInputText(), selectedTier);
-    });
-  });
-}
-
-async function runPipeline(text, tier) {
-  try {
-    showLoading(appContainer);
-
-    const engine = await loadModel(tier.id, (progress) => {
-      if (progress.text) {
-        setLoadingText(progress.text);
-      }
-    });
-
-    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
-    extractedClaims = await extractClaims(text, (msg) => {
-      showStatus(appContainer, msg);
-    });
-
-    hideLoading();
-    renderClaimChecklist(appContainer, extractedClaims);
-    setupChecklistListeners();
-
-  } catch (err) {
-    hideLoading();
-    console.error('Pipeline error:', err);
-    const message = translateError(err.message || '');
-    renderError(appContainer, 'Something went wrong', message);
-  }
 }
 
 function translateError(msg) {
