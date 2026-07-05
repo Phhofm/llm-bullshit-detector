@@ -1,4 +1,4 @@
-import { checkGPUStatus, loadModel, getEngineInfo, isModelLoading, waitForModel } from './llm.js';
+import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
 import { performParallelSearches, fetchURL } from './search.js';
 import {
@@ -13,11 +13,12 @@ import {
   renderResults,
   renderError
 } from './ui.js';
-import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE } from './constants.js';
+import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './constants.js';
 
 let selectedTier = null;
 let extractedClaims = [];
 let urlContent = null;
+let modelLoadVersion = 0;
 
 const appContainer = document.getElementById('app');
 const inputTextarea = document.getElementById('inputText');
@@ -31,15 +32,6 @@ function getDefaultTier() {
     if (tier) return tier;
   }
   return MODEL_TIERS.find(t => t.id === 'deep') || MODEL_TIERS[0];
-}
-
-async function prewarmEngine() {
-  const tier = getDefaultTier();
-  try {
-    await loadModel(tier.id, () => {});
-  } catch {
-    // pre-warming failed silently, will load on demand
-  }
 }
 
 async function init() {
@@ -73,8 +65,6 @@ async function init() {
     const inputSection = document.getElementById('inputSection');
     inputSection.parentNode.insertBefore(warning, inputSection);
   }
-
-  prewarmEngine();
 }
 
 detectBtn.addEventListener('click', async () => {
@@ -93,42 +83,59 @@ detectBtn.addEventListener('click', async () => {
     }
   }
 
-  if (isModelLoading()) {
-    const engine = await waitForModel();
-    const info = getEngineInfo();
-    if (engine && info && info.tierId) {
-      const tier = MODEL_TIERS.find(t => t.id === info.tierId);
-      if (tier) {
-        selectedTier = tier;
-        await runPipeline(getInputText(), tier);
-        return;
-      }
-    }
-  }
-
-  selectedTier = getDefaultTier();
-  await loadDefaultAndRun();
+  await loadAndRun();
 });
 
-async function loadDefaultAndRun() {
+async function loadAndRun() {
   const tier = getDefaultTier();
   selectedTier = tier;
 
   showLoading(appContainer);
-  renderModelLoader(appContainer, MODEL_TIERS, tier, (newTier) => {
+  renderModelLoader(appContainer, MODEL_TIERS, tier, async (newTier) => {
     selectedTier = newTier;
     localStorage.setItem('bullshit-tier', newTier.id);
-    loadModel(newTier.id, (progress) => {
-      if (progress.text) setLoadingText(progress.text);
-    }).then(() => {
-      runPipeline(getInputText(), newTier);
-    }).catch(() => {
-      hideLoading();
-      renderError(appContainer, 'Model loading failed', 'Could not load the model. Try selecting a different one or refreshing.');
-      detectBtn.disabled = false;
-      detectBtn.classList.remove('btn-disabled');
-    });
+    await runWithModel(newTier);
   });
+
+  await runWithModel(tier);
+}
+
+async function runWithModel(tier) {
+  const currentVersion = ++modelLoadVersion;
+
+  try {
+    const engine = await loadModel(tier.id, (progress) => {
+      if (progress.text) {
+        setLoadingText(progress.text);
+      }
+    });
+
+    if (modelLoadVersion !== currentVersion) return;
+
+    if (!engine) {
+      throw new Error('Model failed to load');
+    }
+
+    showStatus(appContainer, 'Analyzing text and extracting claims...');
+    extractedClaims = await extractClaims(getInputText(), (msg) => {
+      showStatus(appContainer, msg);
+    });
+
+    if (modelLoadVersion !== currentVersion) return;
+
+    hideLoading();
+    renderClaimChecklist(appContainer, extractedClaims);
+    setupChecklistListeners();
+
+  } catch (err) {
+    if (modelLoadVersion !== currentVersion) return;
+    hideLoading();
+    console.error('Pipeline error:', err);
+    const message = translateError(err.message || '');
+    renderError(appContainer, 'Something went wrong', message);
+    detectBtn.disabled = false;
+    detectBtn.classList.remove('btn-disabled');
+  }
 }
 
 function resetApp() {
@@ -149,33 +156,6 @@ function getInputText() {
 
 function getInputUrl() {
   return (inputUrl.value || '').trim();
-}
-
-async function runPipeline(text, tier) {
-  try {
-    showLoading(appContainer);
-
-    const engine = await loadModel(tier.id, (progress) => {
-      if (progress.text) {
-        setLoadingText(progress.text);
-      }
-    });
-
-    showStatus(appContainer, 'Analyzing text and extracting claims...');
-    extractedClaims = await extractClaims(text, (msg) => {
-      showStatus(appContainer, msg);
-    });
-
-    hideLoading();
-    renderClaimChecklist(appContainer, extractedClaims);
-    setupChecklistListeners();
-
-  } catch (err) {
-    hideLoading();
-    console.error('Pipeline error:', err);
-    const message = translateError(err.message || '');
-    renderError(appContainer, 'Something went wrong', message);
-  }
 }
 
 function translateError(msg) {
@@ -268,7 +248,7 @@ async function runVerification(selectedClaims) {
       showStatus(appContainer, `Searching... ${done}/${total} queries`);
     });
 
-    showStatus(appContainer, 'Checking claims against the live internet...');
+    showCyclingStatus(appContainer, SNIFFING_MESSAGES);
 
     const { verdicts, overallSmellRating } = await verifyClaims(claimsWithSnippets, urlContent, (msg) => {
       showStatus(appContainer, msg);
