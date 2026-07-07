@@ -1,6 +1,7 @@
 {
   "name": "llm-bullshit-detector",
   "version": "1.0.0",
+  "type": "module",
   "description": "A refreshingly honest tool to detect AI-generated bullshit",
   "private": true,
   "scripts": {

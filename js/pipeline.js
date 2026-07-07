@@ -11,7 +11,7 @@ export async function extractClaims(text, onStatus) {
     { role: 'user', content: `Extract every verifiable factual claim from this text. Return ONLY the JSON:\n\n${text}` }
   ];
 
-  const response = await runInference(messages, null, STAGE1_SCHEMA);
+  const response = await runInference(messages, 90000, STAGE1_SCHEMA);
 
   const parsed = parseModelJson(response, { claims: [] });
   return (parsed && parsed.claims) ? parsed.claims : [];

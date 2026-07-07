@@ -121,9 +121,11 @@ export function useLocalEngine() {
 }
 
 export async function runInference(messages, timeoutMs = 90000, schema) {
+  const effectiveTimeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 90000;
+
   if (remoteConfig) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
     try {
       const resp = await fetch(`${remoteConfig.baseUrl}/chat/completions`, {
@@ -153,7 +155,7 @@ export async function runInference(messages, timeoutMs = 90000, schema) {
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw new Error(`Inference timed out after ${timeoutMs / 1000}s`);
+        throw new Error(`Inference timed out after ${effectiveTimeout / 1000}s`);
       }
       throw err;
     }
@@ -175,13 +177,13 @@ export async function runInference(messages, timeoutMs = 90000, schema) {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
     const reply = await Promise.race([
       engine.chat.completions.create(request),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Inference timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+        setTimeout(() => reject(new Error(`Inference timed out after ${effectiveTimeout / 1000}s`)), effectiveTimeout)
       )
     ]);
     clearTimeout(timeoutId);

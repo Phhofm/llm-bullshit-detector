@@ -25,5 +25,5 @@ jobs:
           node-version: '20'
       - run: |
           for f in js/*.js worker/*.js; do
-            node --check "$f" 2>&1 || exit 0
+            node --check "$f" 2>&1 || exit 1
           done
