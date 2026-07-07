@@ -13,7 +13,8 @@ import {
   renderResults,
   renderVerdictIncremental,
   renderError,
-  renderRemoteSettings
+  renderRemoteSettings,
+  escapeHtml
 } from './ui.js';
 import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './constants.js';
 import { gatherEvidence } from './retrieval.js';
@@ -182,10 +183,70 @@ async function runWithModel(tier) {
     if (modelLoadVersion !== currentVersion) return;
     hideLoading();
     console.error('Pipeline error:', err);
-    const message = translateError(err.message || '');
-    renderError(appContainer, 'Something went wrong', message);
+    const message = translateError(err.message || '', err);
+    renderErrorWithHelp(appContainer, 'Something went wrong', message, tier);
     detectBtn.disabled = false;
     detectBtn.classList.remove('btn-disabled');
+  }
+}
+
+function translateError(msg, err) {
+  if (msg.includes('compatible GPU') || msg.includes('GPU')) {
+    const platform = navigator.platform || '';
+    if (platform.includes('Linux')) {
+      return 'WebGPU is available but Chrome is using a compatibility fallback that WebLLM can\'t work with. ' +
+        'Try launching Chrome with --enable-unsafe-webgpu flag, or switch to Edge which handles this better on Linux.';
+    }
+    if (platform.includes('Win')) {
+      return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
+    }
+    return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
+  }
+  
+  if (msg.includes('Cache') || msg.includes('cache') || err?.name === 'CacheAddError') {
+    return 'Model download failed. This can happen on mobile devices when the screen locks or memory runs low. ' +
+      'Try keeping your screen awake, using a smaller model (Quick Sniff), or using the remote API mode.';
+  }
+  
+  if (msg.includes('memory') || msg.includes('out of memory') || msg.includes('OOM')) {
+    return 'Your device ran out of memory. The model is too large for this device. ' +
+      'Try switching to Quick Sniff (0.5B) or use your own API key.';
+  }
+  
+  return msg || 'The bullshit remains undetected. For now.';
+}
+
+function renderErrorWithHelp(containerEl, heading, message, currentTier) {
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  
+  const helpTips = [];
+  if (isMobile) {
+    helpTips.push('<li>Keep your screen awake during model loading</li>');
+    helpTips.push('<li>Try the Quick Sniff model (0.5B) for smaller memory footprint</li>');
+  }
+  helpTips.push('<li class="mt-2"><a href="#" id="useRemoteBtn" class="text-amber-400 hover:text-amber-300 underline">Use your own API key</a> to skip downloads entirely</li>');
+  
+  containerEl.innerHTML = `
+    <div class="max-w-2xl mx-auto text-center py-8">
+      <p class="text-red-400 text-lg mb-2">${escapeHtml(heading)}</p>
+      <p class="text-gray-400 text-sm mb-4">${escapeHtml(message)}</p>
+      <ul class="text-gray-500 text-xs mb-4 inline-block text-left">
+        ${helpTips.join('\n')}
+      </ul>
+      <button onclick="window.resetApp()" class="btn-secondary mt-2">Try again</button>
+    </div>
+  `;
+  
+  const remoteBtn = document.getElementById('useRemoteBtn');
+  if (remoteBtn) {
+    remoteBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const header = document.querySelector('header');
+      if (header) {
+        const settingsBtn = header.querySelector('#remoteSettingsBtn');
+        if (settingsBtn) settingsBtn.click();
+      }
+    });
   }
 }
 
@@ -208,21 +269,6 @@ function getInputText() {
 
 function getInputUrl() {
   return (inputUrl.value || '').trim();
-}
-
-function translateError(msg) {
-  if (msg.includes('compatible GPU') || msg.includes('GPU')) {
-    const platform = navigator.platform || '';
-    if (platform.includes('Linux')) {
-      return 'WebGPU is available but Chrome is using a compatibility fallback that WebLLM can\'t work with. ' +
-        'Try launching Chrome with --enable-unsafe-webgpu flag, or switch to Edge which handles this better on Linux.';
-    }
-    if (platform.includes('Win')) {
-      return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
-    }
-    return 'WebGPU is available but no compatible adapter was found. Try updating your graphics drivers.';
-  }
-  return msg || 'The bullshit remains undetected. For now.';
 }
 
 function setupChecklistListeners() {

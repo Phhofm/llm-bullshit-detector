@@ -417,6 +417,8 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+export { escapeHtml };
+
 export function renderRemoteSettings(appContainer, remoteConfig) {
   const hasRemote = remoteConfig && remoteConfig.model;
   const remoteBadge = hasRemote ? `<span class="text-xs bg-amber-900/50 text-amber-300 px-2 py-1 rounded ml-2">Remote: ${escapeHtml(remoteConfig.model)} <button id="clearRemoteBtn" class="ml-1 text-red-400 hover:text-red-300">✕</button></span>` : '';
