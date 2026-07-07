@@ -24,13 +24,42 @@ export async function fetchURL(url, maxChars = 50000) {
 
 async function performSearch(query) {
   try {
+    const results = await searchViaProxyJSON(query);
+    if (results.length > 0) return results;
+  } catch (err) {
+    console.warn('JSON search failed:', err.message);
+  }
+
+  try {
     const results = await searchViaJSONP(query);
     if (results.length > 0) return results;
   } catch (err) {
     console.warn('JSONP search failed:', err.message);
   }
 
-  return await searchViaProxy(query);
+  try {
+    const results = await searchViaProxyHTML(query);
+    if (results.length > 0) return results;
+  } catch (err) {
+    console.warn('HTML fallback search failed:', err.message);
+  }
+
+  return [];
+}
+
+async function searchViaProxyJSON(query) {
+  const url = `${SEARCH_PROXY_URL}/search?q=${encodeURIComponent(query)}`;
+  const resp = await fetch(url);
+
+  if (!resp.ok) {
+    throw new Error(`Search proxy returned ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  if (data.results) {
+    return data.results;
+  }
+  throw new Error('No results from JSON search');
 }
 
 function searchViaJSONP(query) {
@@ -123,37 +152,20 @@ function stripTags(str) {
   return (div.textContent || '').trim().replace(/\s+/g, ' ');
 }
 
-async function searchViaProxy(query) {
-  const placeholder = 'REPLACE_WITH_YOUR_WORKER_URL';
-  if (SEARCH_PROXY_URL.includes(placeholder)) {
-    throw new Error('Search proxy not configured');
+async function searchViaProxyHTML(query) {
+  const url = `${SEARCH_PROXY_URL}?q=${encodeURIComponent(query)}`;
+  const resp = await fetch(url);
+
+  if (!resp.ok) {
+    throw new Error(`Search proxy returned ${resp.status}`);
   }
 
-  try {
-    const url = `${SEARCH_PROXY_URL}?q=${encodeURIComponent(query)}`;
-    const resp = await fetch(url);
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`Search proxy returned ${resp.status}: ${text.slice(0, 200)}`);
-    }
-
-    const contentType = resp.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || 'Search proxy returned an error');
-    }
-
-    const html = await resp.text();
-    if (!html || html.length < 100) {
-      throw new Error('Search proxy returned empty or too short response');
-    }
-
-    return parseProxyResults(html);
-  } catch (err) {
-    console.warn('Proxy search failed:', err.message);
-    throw err;
+  const html = await resp.text();
+  if (!html || html.length < 100) {
+    throw new Error('Search proxy returned empty or too short response');
   }
+
+  return parseProxyResults(html);
 }
 
 function parseProxyResults(html) {
@@ -186,7 +198,7 @@ export async function performParallelSearches(claims, onProgress) {
   return results;
 }
 
-function parseDuckDuckGoLite(html) {
+export function parseDuckDuckGoLite(html) {
   const results = [];
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
@@ -216,7 +228,7 @@ function parseDuckDuckGoLite(html) {
   return results;
 }
 
-function parseDuckDuckGoRegex(html) {
+export function parseDuckDuckGoRegex(html) {
   const results = [];
   const rows = html.split(/<tr[^>]*>/i);
   let currentTitle = '';
@@ -245,7 +257,7 @@ function parseDuckDuckGoRegex(html) {
   return results;
 }
 
-function extractRealUrl(href) {
+export function extractRealUrl(href) {
   const uddgMatch = href.match(/uddg=([^&]*)/);
   if (uddgMatch) {
     try { return decodeURIComponent(uddgMatch[1]); } catch { return href; }

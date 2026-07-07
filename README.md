@@ -28,20 +28,23 @@ Paste any AI-generated output into the text box. You can optionally provide a UR
 
 ### Step 3: Choose model (optional)
 
-By default, the tool uses **Qwen2-1.5B** (Deep Dive) — the best balance of speed and reliable reasoning. It runs entirely in your browser via [WebLLM](https://github.com/mlc-ai/web-llm) and WebGPU.
+The tool offers three model tiers:
 
-If you want more thoroughness, use the small dropdown to switch to **Phi-3-mini** (Full Autopsy, 2.5 GB). It's slower and uses more memory, but produces more careful verdicts.
+- **Quick Sniff** (0.5B) — Fast but less reliable. Good for quick checks.
+- **Deep Dive** (1.5B, default) — Best balance of speed and accurate reasoning. Recommended for most people.
+- **Full Autopsy** (Phi-3-mini, 2.5 GB) — Most thorough and reliable reasoning. Slower and heavier on memory.
 
 Models are cached after first download, so subsequent visits load instantly.
 
 ### Step 4: Select claims
 
-The tool extracts verifiable factual claims automatically. Review them and select the ones you want to check. You can use **Select all** or **Deselect all**.
+The tool extracts verifiable factual claims automatically. Claims are sorted by importance (high/medium/low) and pre-checked for high/medium importance. Review and adjust your selection.
 
 ### Step 5: Hit "Sniff"
 
 Click the button and watch the status updates. The tool will:
 - Search the live internet for each claim
+- Fetch the top sources for deeper evidence (when proxy is configured)
 - Compare results against the claim text
 - Give each claim a rating with an explanation and source links
 
@@ -52,7 +55,7 @@ Each claim gets a verdict:
 - 🟡 **Smelly** — sources are unclear, too weak, or don't address the claim
 - 🔴 **Bullshit** — sources explicitly contradict the claim
 
-At the top you'll see an overall "Bullshit %" score.
+The report shows a breakdown with counts and a stacked bar: the "Bullshit %" only counts contradicted claims; unverified claims are tracked separately. You can copy the report as Markdown using the button below.
 
 ## Tips
 
@@ -72,11 +75,17 @@ The tool is intentionally conservative. A claim is marked "Fresh" only when mult
 
 ### Does this send my data anywhere?
 
-No. The language model runs 100% in your browser via WebGPU. The only external requests are search queries sent to the DuckDuckGo search proxy. Your pasted text never leaves your device.
+In local mode, the language model runs 100% in your browser via WebGPU. Only search queries and fetched source URLs go through the proxy. Your pasted text never leaves your device.
+
+In BYO-key mode (when configured), your pasted text is sent to the chosen provider. See the "Use your own API key" section for details.
 
 ### My browser says WebGPU isn't supported. What do I do?
 
 Use **Chrome** (version 113+) or **Edge** (version 113+) on a desktop or laptop. Firefox supports WebGPU behind a flag (`about:config` → `dom.webgpu.enabled`), but it's experimental and may crash. Safari and mobile browsers are not supported.
+
+### No WebGPU? Bring your own key
+
+If WebGPU isn't available, click "⚙️ Use your own API key" to use any OpenAI-compatible endpoint. Your key is stored only in your browser and sent only to the provider you choose.
 
 ### Can I use this on mobile?
 
@@ -84,15 +93,15 @@ Yes, but it's slower and may run out of memory on very large texts. The default 
 
 ### The search isn't returning results. Is it broken?
 
-Make sure the search proxy is deployed (for site owners). If you're just a visitor and searches consistently fail, the proxy may be down. Try again later.
+Make sure the search proxy is deployed (for site owners). The proxy now uses Brave Search API when configured, falling back to DuckDuckGo. If you're just a visitor and searches consistently fail, the proxy may be down. Try again later.
 
-### Why is the overall score 100% Bullshit when some claims are Fresh?
+### Why is the score only counting some claims?
 
-The overall score is a simple average of individual claim ratings. If you selected mostly unverified claims, the score skews high. Try selecting fewer, more specific claims for a fairer score.
+The "Bullshit %" only counts contradicted claims. Unverifiable claims ("Smelly") are tracked separately as "unverified". This gives a more honest assessment: if search simply couldn't find evidence, that's not the same as the claim being false.
 
 ### Why does the app downgrade "Fresh" to "Smelly" sometimes?
 
-Some very small models produce verdicts without writing an explanation. The app treats that as low-confidence and downgrades the rating. Using the default Qwen2-1.5B model (or Phi-3-mini for Full Autopsy) avoids this.
+Some very small models produce verdicts without writing an explanation. The app treats that as low-confidence and downgrades the rating. Using the default Deep Dive model avoids this.
 
 ## Troubleshooting
 
@@ -102,14 +111,14 @@ Some very small models produce verdicts without writing an explanation. The app 
 | "No compatible GPU found" | Update your graphics drivers or try a different device |
 | Model download stalls | Check your internet connection, refresh and try again |
 | Verification fails / timeout | The model timed out. Try switching to a lighter model via the dropdown, or select fewer claims |
-| Searches return nothing | The DuckDuckGo API or proxy may be rate-limiting. Wait a minute and try again |
+| Searches return nothing | The search API or proxy may be rate-limiting. Wait a minute and try again |
 | Page looks broken | Make sure JavaScript is enabled and you're on a supported browser |
 
 ## Tech stack
 
 - **Frontend**: Vanilla HTML/CSS/JS, Tailwind CSS
-- **AI**: [WebLLM](https://github.com/MLC-AI/web-llm) — Qwen2-1.5B (default) and Phi-3-mini, running in-browser via WebGPU
-- **Search**: DuckDuckGo via Cloudflare Worker proxy
+- **AI**: [WebLLM](https://github.com/mlc-ai/web-llm) — Qwen2.5-1.5B (default), Qwen2.5-0.5B (quick), and Phi-3-mini, running in-browser via WebGPU
+- **Search**: Brave Search API (preferred) with DuckDuckGo fallback via Cloudflare Worker proxy
 - **Hosting**: GitHub Pages ($0)
 
 ## License

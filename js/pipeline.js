@@ -1,6 +1,7 @@
 import { runInference } from './llm.js';
-import { STAGE1_PROMPT, STAGE3_PROMPT } from './prompts.js';
+import { STAGE1_PROMPT, STAGE3_PROMPT, STAGE1_SCHEMA, STAGE3_SCHEMA } from './prompts.js';
 import { SNIFFING_MESSAGES, CLAIM_NOT_FOUND_EXPLANATION } from './constants.js';
+import { parseModelJson, parseStage3Response, calculateOverallRating, summarizeVerdicts } from './scoring.js';
 
 export async function extractClaims(text, onStatus) {
   if (onStatus) onStatus(SNIFFING_MESSAGES[0]);
@@ -10,17 +11,21 @@ export async function extractClaims(text, onStatus) {
     { role: 'user', content: `Extract every verifiable factual claim from this text. Return ONLY the JSON:\n\n${text}` }
   ];
 
-  const response = await runInference(messages);
+  const response = await runInference(messages, null, STAGE1_SCHEMA);
 
   const parsed = parseModelJson(response, { claims: [] });
   return (parsed && parsed.claims) ? parsed.claims : [];
 }
 
-export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
+export async function verifyClaims(claimsWithSnippets, urlContent, onStatus, onVerdict, shouldCancel) {
   const verdicts = [];
-  let totalErrors = 0;
 
   for (let i = 0; i < claimsWithSnippets.length; i++) {
+    if (shouldCancel && shouldCancel()) {
+      const summary = summarizeVerdicts(verdicts);
+      return { verdicts, summary, stoppedEarly: true, total: claimsWithSnippets.length };
+    }
+
     const item = claimsWithSnippets[i];
 
     if (onStatus) {
@@ -29,15 +34,16 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
     }
 
     if (item.error || item.snippets.length === 0) {
-      verdicts.push({
+      const verdict = {
         claim: item.claim,
         rating: 'Smelly',
         explanation: item.error
           ? 'Search failed for this claim. The internet refused to weigh in.'
           : CLAIM_NOT_FOUND_EXPLANATION,
         sources: []
-      });
-      totalErrors++;
+      };
+      verdicts.push(verdict);
+      if (onVerdict) onVerdict(verdict, i, claimsWithSnippets.length);
       continue;
     }
 
@@ -47,6 +53,14 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
       .join('\n\n');
 
     let userContent = `Claim to verify: "${item.claim}"\n\nLive search results:\n${snippetsText}`;
+    
+    if (item.passages?.length) {
+      const passageText = item.passages
+        .map(p => `[Source: ${p.url}]\n${p.text.slice(0, 1200)}`)
+        .join('\n\n');
+      userContent += `\n\nEXTRACTED PAGE CONTENT (deeper evidence from the top sources):\n${passageText}`;
+    }
+    
     if (urlContent) {
       userContent += `\n\n---\nLIVE PAGE FETCHED DIRECTLY:\n${urlContent.slice(0, 3000)}`;
       userContent += `\n\nIMPORTANT: The AI output being checked may have claimed something about the page at this URL. Compare the claim against the ACTUAL content above. If the page clearly exists and contains information the AI denied, that's Bullshit.`;
@@ -64,7 +78,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
         if (onStatus && attempt === 2) {
           onStatus(`Retrying verification for claim ${i + 1}...`);
         }
-        response = await runInference(messages, 90000);
+        response = await runInference(messages, 90000, STAGE3_SCHEMA);
         break;
       } catch (err) {
         lastError = err;
@@ -75,7 +89,7 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
     }
 
     if (!response) {
-      verdicts.push({
+      const verdict = {
         claim: item.claim,
         rating: 'Smelly',
         explanation: lastError?.message === 'Inference timed out after 90s'
@@ -86,101 +100,17 @@ export async function verifyClaims(claimsWithSnippets, urlContent, onStatus) {
           url: s.url,
           relevant: false
         }))
-      });
-      totalErrors++;
+      };
+      verdicts.push(verdict);
+      if (onVerdict) onVerdict(verdict, i, claimsWithSnippets.length);
       continue;
     }
 
     const parsed = parseStage3Response(response, item);
     verdicts.push(parsed);
+    if (onVerdict) onVerdict(parsed, i, claimsWithSnippets.length);
   }
 
-  const overallSmellRating = calculateOverallRating(verdicts);
-  return { verdicts, overallSmellRating };
-}
-
-function parseModelJson(response, fallback) {
-  if (!response) return fallback;
-
-  let cleaned = response.trim();
-
-  if (cleaned.startsWith('```')) {
-    const firstNewline = cleaned.indexOf('\n');
-    if (firstNewline !== -1) {
-      cleaned = cleaned.slice(firstNewline + 1);
-    }
-    if (cleaned.endsWith('```')) {
-      cleaned = cleaned.slice(0, -3);
-    }
-    cleaned = cleaned.trim();
-  }
-
-  cleaned = cleaned.replace(/^json\s*/i, '').trim();
-
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    try {
-      return JSON.parse(cleaned.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
-    } catch {
-      return fallback;
-    }
-  }
-}
-
-function parseStage3Response(response, item) {
-  const fallbackClaim = item.claim;
-  const fallbackSources = item.snippets.slice(0, 3).map(s => ({
-    title: s.title,
-    url: s.url,
-    relevant: false
-  }));
-
-  const parsed = parseModelJson(response, null);
-  if (!parsed) {
-    return {
-      claim: fallbackClaim,
-      rating: 'Smelly',
-      explanation: 'Could not parse the verification result. The small model produced malformed output — try a bigger model tier for more reliable answers.',
-      sources: fallbackSources
-    };
-  }
-
-  const rating = ['Fresh', 'Bullshit', 'Smelly'].includes(parsed.rating) ? parsed.rating : 'Smelly';
-  const hasExplanation = typeof parsed.explanation === 'string' && parsed.explanation.trim().length > 0;
-  const sources = Array.isArray(parsed.sources) && parsed.sources.length > 0 ? parsed.sources : fallbackSources;
-
-  if (!hasExplanation) {
-    // The model gave a verdict but no reasoning — that's low-confidence, don't trust "Fresh"/"Bullshit" blindly.
-    const topTitles = item.snippets.slice(0, 2).map(s => s.title).filter(Boolean).join('; ');
-    return {
-      claim: parsed.claim || fallbackClaim,
-      rating: 'Smelly',
-      explanation: topTitles
-        ? `The model gave a verdict but no explanation, so we downgraded it to "Smelly" out of caution. Relevant sources found: ${topTitles}. Check them yourself below.`
-        : 'The model gave a verdict but no explanation, so we downgraded it to "Smelly" out of caution. Try a bigger model tier for more reliable reasoning.',
-      sources
-    };
-  }
-
-  return {
-    claim: parsed.claim || fallbackClaim,
-    rating,
-    explanation: parsed.explanation.trim(),
-    sources
-  };
-}
-
-function calculateOverallRating(verdicts) {
-  if (verdicts.length === 0) return 0;
-
-  let total = 0;
-  for (const v of verdicts) {
-    if (v.rating === 'Fresh') total += 0;
-    else if (v.rating === 'Smelly') total += 50;
-    else if (v.rating === 'Bullshit') total += 100;
-    else total += 50;
-  }
-
-  return Math.round(total / verdicts.length);
+  const summary = summarizeVerdicts(verdicts);
+  return { verdicts, summary };
 }

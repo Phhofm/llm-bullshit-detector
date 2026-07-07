@@ -81,9 +81,17 @@ export const SCORE_LABELS = [
 
 export const MODEL_TIERS = [
   {
+    id: 'quick',
+    label: 'Quick Sniff',
+    modelId: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+    sizeGB: 0.5,
+    tagline: 'Fast but less reliable. Good for quick checks.',
+    loadingLine: 'Loading the quickest skeptic available. Takes seconds.'
+  },
+  {
     id: 'deep',
     label: 'Deep Dive',
-    modelId: 'Qwen2-1.5B-Instruct-q4f16_1-MLC',
+    modelId: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
     sizeGB: 1.5,
     tagline: 'Best balance of speed and accuracy. Recommended for most people.',
     loadingLine: 'A medium-sized skeptic incoming. Go grab a coffee.'

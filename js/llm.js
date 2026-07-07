@@ -4,6 +4,7 @@ let engine = null;
 let currentModelId = null;
 let loadProgressCallback = null;
 let modelLoadingPromise = null;
+let remoteConfig = null;
 
 export function isModelLoading() {
   return modelLoadingPromise !== null;
@@ -19,6 +20,9 @@ export async function waitForModel() {
 }
 
 export async function checkGPUStatus() {
+  const isRemote = remoteConfig !== null;
+  if (isRemote) return 'remote';
+  
   if (typeof navigator === 'undefined' || !navigator.gpu) {
     const isFirefox = typeof navigator !== 'undefined' && /Firefox/.test(navigator.userAgent || '');
     return isFirefox ? 'firefox_no_flag' : 'no_webgpu';
@@ -44,16 +48,23 @@ export async function checkGPUStatus() {
 }
 
 export function isWebGPUSupported() {
-  return typeof navigator !== 'undefined' && !!navigator.gpu;
+  const isRemote = remoteConfig !== null;
+  return isRemote || (typeof navigator !== 'undefined' && !!navigator.gpu);
 }
 
 export function getEngineInfo() {
+  if (remoteConfig) {
+    return { tierId: 'remote', modelId: remoteConfig.model };
+  }
   if (!engine) return null;
   const tier = MODEL_TIERS.find(t => t.modelId === currentModelId);
   return { tierId: tier ? tier.id : null, modelId: currentModelId };
 }
 
 export async function loadModel(tierId, onProgress) {
+  const isRemote = remoteConfig !== null;
+  if (isRemote) return null;
+
   const tier = MODEL_TIERS.find(t => t.id === tierId);
   if (!tier) throw new Error(`Unknown model tier: ${tierId}`);
 
@@ -93,14 +104,74 @@ export async function loadModel(tierId, onProgress) {
   }
 }
 
-export async function runInference(messages, timeoutMs = 90000) {
+export function configureRemote({ baseUrl, apiKey, model }) {
+  remoteConfig = { baseUrl, apiKey, model };
+  try {
+    localStorage.setItem('bullshit-remote-config', JSON.stringify({ baseUrl, model }));
+    localStorage.setItem('bullshit-remote-key', apiKey);
+  } catch {}
+}
+
+export function useLocalEngine() {
+  remoteConfig = null;
+  try {
+    localStorage.removeItem('bullshit-remote-config');
+    localStorage.removeItem('bullshit-remote-key');
+  } catch {}
+}
+
+export async function runInference(messages, timeoutMs = 90000, schema) {
+  if (remoteConfig) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const resp = await fetch(`${remoteConfig.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${remoteConfig.apiKey}`
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: remoteConfig.model,
+          messages,
+          temperature: 0.0,
+          ...(schema && { response_format: { type: 'json_object' } })
+        })
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({ error: { message: `HTTP ${resp.status}` } }));
+        throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      return data.choices[0]?.message?.content || '';
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error(`Inference timed out after ${timeoutMs / 1000}s`);
+      }
+      throw err;
+    }
+  }
+
   if (!engine) throw new Error('Model not loaded');
 
   const request = {
     messages,
     temperature: 0.0,
     top_p: 1.0,
-    max_tokens: 2048
+    max_tokens: 2048,
+    ...(schema && {
+      response_format: {
+        type: 'json_object',
+        schema: JSON.stringify(schema)
+      }
+    })
   };
 
   const controller = new AbortController();

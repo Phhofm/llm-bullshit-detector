@@ -1,4 +1,4 @@
-import { checkGPUStatus, loadModel, getEngineInfo } from './llm.js';
+import { checkGPUStatus, loadModel, getEngineInfo, configureRemote, useLocalEngine } from './llm.js';
 import { extractClaims, verifyClaims } from './pipeline.js';
 import { performParallelSearches, fetchURL } from './search.js';
 import {
@@ -11,19 +11,34 @@ import {
   renderModelLoader,
   renderClaimChecklist,
   renderResults,
-  renderError
+  renderVerdictIncremental,
+  renderError,
+  renderRemoteSettings
 } from './ui.js';
 import { MODEL_TIERS, FIREFOX_UNSTABLE_MESSAGE, SNIFFING_MESSAGES } from './constants.js';
+import { gatherEvidence } from './retrieval.js';
 
 let selectedTier = null;
 let extractedClaims = [];
 let urlContent = null;
 let modelLoadVersion = 0;
+let cancelled = false;
 
 const appContainer = document.getElementById('app');
 const inputTextarea = document.getElementById('inputText');
 const inputUrl = document.getElementById('inputUrl');
 const detectBtn = document.getElementById('detectBtn');
+
+function getRemoteConfig() {
+  try {
+    const saved = localStorage.getItem('bullshit-remote-config');
+    const key = localStorage.getItem('bullshit-remote-key');
+    if (saved && key) {
+      return { ...JSON.parse(saved), apiKey: key };
+    }
+  } catch {}
+  return null;
+}
 
 function getDefaultTier() {
   const saved = localStorage.getItem('bullshit-tier');
@@ -35,12 +50,20 @@ function getDefaultTier() {
 }
 
 async function init() {
+  const remoteConfig = getRemoteConfig();
+  renderRemoteSettings(appContainer, remoteConfig);
+
   const status = await checkGPUStatus();
 
   if (status === 'no_webgpu') {
     renderGPUStatus(appContainer, status);
     detectBtn.disabled = true;
     detectBtn.classList.add('btn-disabled');
+    return;
+  }
+
+  if (status === 'remote') {
+    // Remote mode: skip model loading
     return;
   }
 
@@ -70,11 +93,28 @@ async function init() {
 detectBtn.addEventListener('click', async () => {
   if (!inputTextarea.value.trim()) return;
 
+  const remoteConfig = getRemoteConfig();
+  if (remoteConfig) {
+    configureRemote(remoteConfig);
+    detectBtn.disabled = true;
+    detectBtn.classList.add('btn-disabled');
+    showLoading(appContainer);
+    try {
+      await runPipelineRemote();
+    } catch (err) {
+      hideLoading();
+      renderError(appContainer, 'Verification failed', err.message || 'The internet refused to cooperate. Try again.');
+      detectBtn.disabled = false;
+      detectBtn.classList.remove('btn-disabled');
+    }
+    return;
+  }
+
   detectBtn.disabled = true;
   detectBtn.classList.add('btn-disabled');
 
   const existing = getEngineInfo();
-  if (existing && existing.tierId) {
+  if (existing && existing.tierId && existing.tierId !== 'remote') {
     const tier = MODEL_TIERS.find(t => t.id === existing.tierId);
     if (tier) {
       selectedTier = tier;
@@ -85,6 +125,17 @@ detectBtn.addEventListener('click', async () => {
 
   await loadAndRun();
 });
+
+async function runPipelineRemote() {
+  showStatus(appContainer, 'Analyzing text and extracting claims...');
+  extractedClaims = await extractClaims(getInputText(), (msg) => {
+    showStatus(appContainer, msg);
+  });
+
+  hideLoading();
+  renderClaimChecklist(appContainer, extractedClaims);
+  setupChecklistListeners();
+}
 
 async function loadAndRun() {
   const tier = getDefaultTier();
@@ -143,6 +194,7 @@ function resetApp() {
   selectedTier = null;
   extractedClaims = [];
   urlContent = null;
+  cancelled = false;
   inputTextarea.value = '';
   if (inputUrl) inputUrl.value = '';
   detectBtn.disabled = false;
@@ -225,6 +277,8 @@ function setupChecklistListeners() {
 }
 
 async function runVerification(selectedClaims) {
+  cancelled = false;
+
   try {
     const targetUrl = getInputUrl();
     urlContent = null;
@@ -248,14 +302,28 @@ async function runVerification(selectedClaims) {
       showStatus(appContainer, `Searching... ${done}/${total} queries`);
     });
 
+    let claimsWithEvidence = claimsWithSnippets;
+    try {
+      showStatus(appContainer, 'Reading the top sources for evidence...');
+      claimsWithEvidence = await gatherEvidenceBatched(claimsWithSnippets, (done, total) => {
+        showStatus(appContainer, `Reading sources... (${done}/${total})`);
+      });
+    } catch (err) {
+      console.warn('Evidence gathering failed, proceeding with snippets only:', err.message);
+    }
+
     showCyclingStatus(appContainer, SNIFFING_MESSAGES);
 
-    const { verdicts, overallSmellRating } = await verifyClaims(claimsWithSnippets, urlContent, (msg) => {
+    const verdicts = [];
+    const { summary, stoppedEarly, total } = await verifyClaims(claimsWithEvidence, urlContent, (msg) => {
       showStatus(appContainer, msg);
-    });
+    }, (verdict, idx, total) => {
+      verdicts.push(verdict);
+      renderVerdictIncremental(appContainer, verdict, total);
+    }, () => cancelled);
 
     hideLoading();
-    renderResults(appContainer, verdicts, overallSmellRating);
+    renderResults(appContainer, verdicts, summary.bullshitPct, stoppedEarly, total);
 
   } catch (err) {
     hideLoading();
@@ -264,6 +332,37 @@ async function runVerification(selectedClaims) {
   }
 }
 
+async function gatherEvidenceBatched(claims, onProgress) {
+  const results = [];
+  let done = 0;
+  const total = claims.length;
+
+  for (let i = 0; i < claims.length; i += 3) {
+    const batch = claims.slice(i, i + 3);
+    const batchResults = await Promise.allSettled(
+      batch.map(claim => gatherEvidence(claim, fetchURL, onProgress))
+    );
+
+    batchResults.forEach((result, j) => {
+      results[i + j] = result.status === 'fulfilled' ? result.value : claims[i + j];
+      done++;
+    });
+
+    if (onProgress) onProgress(done, total);
+  }
+
+  for (let i = 0; i < claims.length; i++) {
+    if (!results[i]) results[i] = claims[i];
+  }
+
+  return results;
+}
+
 window.resetApp = resetApp;
+window.cancelVerification = function() {
+  cancelled = true;
+};
+window.configureRemote = configureRemote;
+window.useLocalEngine = useLocalEngine;
 
 init();

@@ -8,6 +8,7 @@ import {
   SCORE_LABELS,
   WEBGPU_INFO_TEXT
 } from './constants.js';
+import { reportToMarkdown } from './scoring.js';
 
 let loadingMessageInterval = null;
 
@@ -76,6 +77,7 @@ export function showCyclingStatus(containerEl, messages) {
     <div class="text-center py-12">
       <div class="inline-block w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin mb-4"></div>
       <p id="statusMessage" class="text-gray-400 text-lg italic"></p>
+      <button id="cancelBtn" class="btn-secondary mt-4 text-xs">Cancel</button>
     </div>
   `;
 
@@ -91,6 +93,13 @@ export function showCyclingStatus(containerEl, messages) {
 
   cycle();
   loadingMessageInterval = setInterval(cycle, 2500);
+
+  const cancelBtn = document.getElementById('cancelBtn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      window.cancelVerification && window.cancelVerification();
+    });
+  }
 }
 
 function hideCycling() {
@@ -147,6 +156,8 @@ export function renderModelLoader(containerEl, tiers, selectedTier, onSwitchMode
     const selected = tier.id === selectedTier.id ? ' selected' : '';
     const desc = tier.id === 'deep'
       ? 'Recommended — best balance'
+      : tier.id === 'quick'
+      ? 'Fast but less reliable'
       : 'Most thorough, heavier';
     return `<option value="${tier.id}"${selected}>${tier.label} (${tier.modelId.split('-')[0]}-${tier.sizeGB}B) — ${desc}</option>`;
   }).join('');
@@ -207,15 +218,23 @@ export function renderClaimChecklist(containerEl, claims) {
     return;
   }
 
-  const items = claims.map((c, i) => `
+  const sorted = [...claims].sort((a, b) => {
+    const order = { high: 0, medium: 1, low: 2 };
+    return (order[a.importance] ?? 2) - (order[b.importance] ?? 2);
+  });
+
+  const items = sorted.map((c, i) => {
+    const checked = c.importance !== 'low' ? ' checked' : '';
+    return `
     <label class="claim-item">
-      <input type="checkbox" class="claim-checkbox" data-index="${i}">
+      <input type="checkbox" class="claim-checkbox" data-index="${i}"${checked}>
       <div class="flex-1">
         <p class="text-white">${escapeHtml(c.claim)}</p>
         <p class="text-gray-500 text-xs mt-1">Search: ${escapeHtml(c.searchQuery)}</p>
       </div>
     </label>
-  `).join('');
+  `;
+  }).join('');
 
   containerEl.innerHTML = `
     <div class="max-w-2xl mx-auto" id="checklistContainer">
@@ -241,41 +260,104 @@ export function renderClaimChecklist(containerEl, claims) {
   `;
 }
 
-export function renderResults(containerEl, verdicts, overallSmellRating) {
-  const scoreLabel = getScoreLabel(overallSmellRating);
-  const ratingColor = getRatingColor(overallSmellRating);
-  const isAllClean = overallSmellRating === 0 && verdicts.length > 0;
+function verdictCardHTML(verdict) {
+  const color = getVerdictColor(verdict.rating);
+  const sources = (verdict.sources || []).map(s => `
+    <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener"
+       class="block text-xs ${s.relevant ? 'text-amber-400' : 'text-gray-500'} hover:underline truncate">
+      ${escapeHtml(s.title)}
+    </a>
+  `).join('');
 
-  const cards = verdicts.map((v, i) => {
-    const color = getVerdictColor(v.rating);
-    const sources = (v.sources || []).map(s => `
-      <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener"
-         class="block text-xs ${s.relevant ? 'text-amber-400' : 'text-gray-500'} hover:underline truncate">
-        ${escapeHtml(s.title)}
-      </a>
-    `).join('');
+  return `
+    <div class="verdict-card ${color}">
+      <div class="flex items-start justify-between mb-2">
+        <p class="text-white font-medium flex-1 mr-4">${escapeHtml(verdict.claim)}</p>
+        <span class="rating-badge ${color}">${verdict.rating}</span>
+      </div>
+      <p class="text-gray-400 text-sm mb-3">${escapeHtml(verdict.explanation || '')}</p>
+      ${sources ? `<div class="sources-list">${sources}</div>` : ''}
+    </div>
+  `;
+}
 
-    return `
-      <div class="verdict-card ${color}">
-        <div class="flex items-start justify-between mb-2">
-          <p class="text-white font-medium flex-1 mr-4">${escapeHtml(v.claim)}</p>
-          <span class="rating-badge ${color}">${v.rating}</span>
-        </div>
-        <p class="text-gray-400 text-sm mb-3">${escapeHtml(v.explanation || '')}</p>
-        ${sources ? `<div class="sources-list">${sources}</div>` : ''}
+export function renderVerdictIncremental(containerEl, verdict, total) {
+  let listEl = containerEl.querySelector('.verdict-list');
+  
+  if (!listEl) {
+    containerEl.innerHTML = `
+      <div class="max-w-2xl mx-auto">
+        <div id="resultsHeader"></div>
+        <div class="verdict-list"></div>
       </div>
     `;
-  }).join('');
+    listEl = containerEl.querySelector('.verdict-list');
+  }
+
+  const card = verdictCardHTML(verdict);
+  listEl.insertAdjacentHTML('beforeend', card);
+}
+
+export function renderResults(containerEl, verdicts, overallSmellRating, stoppedEarly = false, totalClaims = null) {
+  const summary = {
+    total: verdicts.length,
+    fresh: verdicts.filter(v => v.rating === 'Fresh').length,
+    smelly: verdicts.filter(v => v.rating === 'Smelly').length,
+    bullshit: verdicts.filter(v => v.rating === 'Bullshit').length
+  };
+
+  const bullshitPct = summary.total > 0 ? Math.round(100 * summary.bullshit / summary.total) : 0;
+  const uncheckedPct = summary.total > 0 ? Math.round(100 * summary.smelly / summary.total) : 0;
+
+  let labelText;
+  if (bullshitPct <= 10) {
+    labelText = 'Suspiciously accurate. Almost too accurate...';
+  } else if (bullshitPct <= 30) {
+    labelText = 'Mostly fresh. A slight whiff of bullshit.';
+  } else if (bullshitPct <= 60) {
+    labelText = 'Something definitely smells in here.';
+  } else if (bullshitPct <= 90) {
+    labelText = 'Strong bullshit odor detected. Open a window.';
+  } else {
+    labelText = 'This text is 100% organic, free-range bullshit.';
+  }
+
+  const isAllClean = summary.fresh > 0 && summary.bullshit === 0 && summary.smelly === 0;
+  const hasHighUnverified = uncheckedPct > 50 && bullshitPct < 20;
+  if (hasHighUnverified && summary.total > 0) {
+    labelText = "Couldn't verify much — that's not proof of bullshit, but don't trust it blindly either.";
+  }
+
+  const cards = verdicts.map(v => verdictCardHTML(v)).join('');
+
+  const stoppedMsg = stoppedEarly && totalClaims ? `<p class="text-gray-500 text-xs mt-2">Stopped early — ${summary.total} of ${totalClaims} claims checked</p>` : '';
 
   containerEl.innerHTML = `
     <div class="max-w-2xl mx-auto">
       <div class="text-center mb-8">
-        <div class="inline-flex items-center gap-3 mb-3">
-          <span class="text-5xl font-bold ${ratingColor}">${overallSmellRating}%</span>
-          <span class="text-gray-500 text-lg">Bullshit</span>
+        <div class="flex items-center justify-center gap-2 mb-3">
+          <span class="text-3xl">🟢</span>
+          <span class="text-xl text-white">${summary.fresh} confirmed</span>
+          <span class="text-gray-600">·</span>
+          <span class="text-3xl">🟡</span>
+          <span class="text-xl text-white">${summary.smelly} unverified</span>
+          <span class="text-gray-600">·</span>
+          <span class="text-3xl">🔴</span>
+          <span class="text-xl text-white">${summary.bullshit} contradicted</span>
         </div>
-        <p class="text-gray-400 italic">${scoreLabel}</p>
+        <div class="w-full h-4 bg-gray-800 rounded-full overflow-hidden mb-2">
+          <div class="flex h-full">
+            <div class="bg-green-500" style="width: ${100 - uncheckedPct - bullshitPct}%"></div>
+            <div class="bg-yellow-500" style="width: ${uncheckedPct}%"></div>
+            <div class="bg-red-500" style="width: ${bullshitPct}%"></div>
+          </div>
+        </div>
+        <p class="text-gray-400 italic">${labelText}</p>
         ${isAllClean ? `<p class="text-green-400 text-sm mt-2 italic">${ALL_CLEAN_MESSAGE}</p>` : ''}
+        ${stoppedMsg}
+        <button id="copyReportBtn" class="btn-secondary mt-4 text-xs">
+          Copy report as Markdown
+        </button>
       </div>
       <div class="verdict-list">${cards}</div>
       <div class="text-center mt-8">
@@ -285,6 +367,18 @@ export function renderResults(containerEl, verdicts, overallSmellRating) {
       </div>
     </div>
   `;
+
+  const copyBtn = document.getElementById('copyReportBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const markdown = reportToMarkdown(verdicts, summary);
+      await navigator.clipboard.writeText(markdown);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy report as Markdown';
+      }, 2000);
+    });
+  }
 }
 
 function getScoreLabel(rating) {
@@ -321,4 +415,88 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+export function renderRemoteSettings(appContainer, remoteConfig) {
+  const hasRemote = remoteConfig && remoteConfig.model;
+  const remoteBadge = hasRemote ? `<span class="text-xs bg-amber-900/50 text-amber-300 px-2 py-1 rounded ml-2">Remote: ${escapeHtml(remoteConfig.model)} <button id="clearRemoteBtn" class="ml-1 text-red-400 hover:text-red-300">✕</button></span>` : '';
+
+  const existingHeader = document.querySelector('header');
+  if (existingHeader) {
+    existingHeader.innerHTML = `
+      <h1 class="text-4xl sm:text-5xl font-bold tracking-tight mb-3">
+        <span class="text-amber-400">LLM</span> Bullshit Detector
+      </h1>
+      <p class="text-gray-500 text-lg italic max-w-lg mx-auto leading-relaxed">
+        Because sometimes AI outputs smell worse than a forgotten Tupperware in the back of the fridge. ${remoteBadge}
+      </p>
+      <button id="remoteSettingsBtn" class="text-xs text-amber-400 hover:text-amber-300 transition-colors mt-2 underline">
+        ⚙️ Use your own API key
+      </button>
+    `;
+
+    document.getElementById('remoteSettingsBtn')?.addEventListener('click', () => {
+      showRemoteSettingsPanel();
+    });
+    document.getElementById('clearRemoteBtn')?.addEventListener('click', () => {
+      window.useLocalEngine && window.useLocalEngine();
+      resetApp();
+    });
+  }
+}
+
+function showRemoteSettingsPanel() {
+  const existing = document.getElementById('remoteSettingsPanel');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const panel = document.createElement('div');
+  panel.id = 'remoteSettingsPanel';
+  panel.className = 'max-w-2xl mx-auto bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6';
+  panel.innerHTML = `
+    <p class="text-gray-400 text-xs mb-3">Your key is stored only in this browser and sent only to the provider you choose. In this mode your pasted text is sent to that provider.</p>
+    <div class="space-y-3">
+      <select id="providerSelect" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-gray-200 text-sm w-full">
+        <option value="openrouter">OpenRouter (https://openrouter.ai/api/v1)</option>
+        <option value="openai">OpenAI (https://api.openai.com/v1)</option>
+        <option value="custom">Custom (enter below)</option>
+      </select>
+      <input id="baseUrlInput" type="text" placeholder="Base URL (for custom provider)" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-gray-200 text-sm w-full hidden">
+      <input id="modelInput" type="text" placeholder="Model name (e.g. gpt-4o-mini)" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-gray-200 text-sm w-full">
+      <input id="apiKeyInput" type="password" placeholder="API key" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-gray-200 text-sm w-full">
+      <div class="flex gap-2">
+        <button id="saveRemoteBtn" class="btn-primary text-xs px-4 py-2">Save</button>
+        <button id="cancelRemoteBtn" class="btn-secondary text-xs px-4 py-2">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  const header = document.querySelector('header');
+  if (header) {
+    header.parentNode.insertBefore(panel, header.nextSibling);
+  }
+
+  document.getElementById('providerSelect').addEventListener('change', (e) => {
+    document.getElementById('baseUrlInput').classList.toggle('hidden', e.target.value !== 'custom');
+  });
+
+  document.getElementById('cancelRemoteBtn').addEventListener('click', () => {
+    panel.remove();
+  });
+
+  document.getElementById('saveRemoteBtn').addEventListener('click', () => {
+    const provider = document.getElementById('providerSelect').value;
+    const baseUrl = provider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
+                    provider === 'openai' ? 'https://api.openai.com/v1' :
+                    document.getElementById('baseUrlInput').value;
+    const model = document.getElementById('modelInput').value;
+    const apiKey = document.getElementById('apiKeyInput').value;
+
+    if (baseUrl && model && apiKey) {
+      window.configureRemote && window.configureRemote({ baseUrl, apiKey, model });
+      panel.remove();
+    }
+  });
 }

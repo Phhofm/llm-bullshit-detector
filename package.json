@@ -4,8 +4,13 @@
   "description": "A refreshingly honest tool to detect AI-generated bullshit",
   "private": true,
   "scripts": {
-    "deploy:worker": "cd worker && npx wrangler deploy",
-    "dev:worker": "cd worker && npx wrangler dev"
+    "test": "vitest run",
+    "dev:worker": "cd worker && npx wrangler dev",
+    "deploy:worker": "cd worker && npx wrangler deploy"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^2.1.9"
   },
   "keywords": [
     "ai",

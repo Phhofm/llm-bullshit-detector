@@ -1,0 +1,17 @@
+[
+  { "claim": "The Eiffel Tower is located in Paris, France.", "searchQuery": "Eiffel Tower Paris France", "expected": "Fresh" },
+  { "claim": "Water boils at 100°C at sea level.", "searchQuery": "water boiling point 100 C", "expected": "Fresh" },
+  { "claim": "The Great Wall of China is visible from the Moon with the naked eye.", "searchQuery": "Great Wall visible from Moon myth", "expected": "Bullshit" },
+  { "claim": "Albert Einstein failed mathematics in school.", "searchQuery": "Einstein failed math school", "expected": "Bullshit" },
+  { "claim": "The Earth orbits the Sun.", "searchQuery": "Earth orbit Sun heliocentrism", "expected": "Fresh" },
+  { "claim": "Humans landed on the Moon in 1969.", "searchQuery": "Apollo 11 Moon landing 1969", "expected": "Fresh" },
+  { "claim": "The mitochondria is the powerhouse of the cell.", "searchQuery": "mitochondria powerhouse cell biology", "expected": "Fresh" },
+  { "claim": "Venus is the hottest planet in our solar system.", "searchQuery": "Venus hottest planet solar system", "expected": "Fresh" },
+  { "claim": "Shakespeare wrote the Harry Potter books.", "searchQuery": "Shakespeare Harry Potter author", "expected": "Bullshit" },
+  { "claim": "The United States has 50 states.", "searchQuery": "US states 50 count", "expected": "Fresh" },
+  { "claim": "Lightning never strikes the same place twice.", "searchQuery": "lightning same place twice myth", "expected": "Bullshit" },
+  { "claim": "Bananas are berries, but strawberries aren't.", "searchQuery": "bananas berries strawberries botanical definition", "expected": "Fresh" },
+  { "claim": "The Titanic sank on its maiden voyage in 1912.", "searchQuery": "Titanic sinking 1912", "expected": "Fresh" },
+  { "claim": "Bulls get angry at the color red.", "searchQuery": "bulls red color anger myth", "expected": "Bullshit" },
+  { "claim": "Napoleon Bonaparte was extremely short.", "searchQuery": "Napoleon height short myth", "expected": "Bullshit" }
+]
